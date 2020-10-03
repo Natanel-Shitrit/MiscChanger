@@ -93,6 +93,15 @@ enum struct PlayerInfo
 
 PlayerInfo g_PlayerInfo[MAXPLAYERS + 1];
 
+public Plugin myinfo = 
+{
+	name = "MiscChanger", 
+	author = "Natanel 'LuqS'", 
+	description = "Allowing Players to change thier CS:GO miscellaneous items (Music-Kit / Coin / Pin).", 
+	version = "1.0.0", 
+	url = "https://steamcommunity.com/id/luqsgood || Discord: LuqS#6505 || https://github.com/Natanel-Shitrit"
+}
+
 /*********************
 		Events
 **********************/
