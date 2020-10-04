@@ -1,5 +1,6 @@
 #include <sdktools>
 #include <eItems>
+#include <MiscChanger>
 #include <PTaH>
 
 #pragma newdecls required
@@ -8,13 +9,12 @@
 #define PREFIX " \x04"... PREFIX_NO_COLOR ..."\x01"
 #define PREFIX_NO_COLOR "[MiscChanger]"
 
-#define MUSIC_KIT_MAX_NAME_LEN 48
-#define COIN_SET_MAX_NAME_LEN 48
-#define COIN_MAX_NAME_LEN 48
-#define PIN_MAX_NAME_LEN 48
-
 // Database
 Database g_Database;
+
+// Forwards
+GlobalForward g_fOnItemChangedPreForward; 	// Blockable
+GlobalForward g_fOnItemChangedPostForward;	// Not Blockable
 
 // SDK Handles
 Handle g_hSetRank;
@@ -33,7 +33,7 @@ enum MedalCategory_t
 	MEDAL_CATEGORY_ACHIEVEMENTS_END, 
 	MEDAL_CATEGORY_SEASON_COIN = MEDAL_CATEGORY_ACHIEVEMENTS_END, 
 	MEDAL_CATEGORY_COUNT, 
-};
+}
 
 // ArrayList Sizes
 int g_iMusicKitsCount;
@@ -79,15 +79,63 @@ enum struct PlayerInfo
 		this.iAccountID = 0;
 	}
 	
-	void ApplyItems(int client)
+	bool SaveAndApplyItem(int client, MCItem item, int newvalue, bool isFirstLoad = false)
 	{
-		// Music-Kit
-		if(this.iMusicKitNum)
-			SetEntProp(client, Prop_Send, "m_unMusicID", this.iMusicKitNum);
+		int oldvalue = (item == MCITEM_MUSICKIT) ? this.iMusicKitNum : this.iPinOrCoinDefIndex;
 		
-		// Coin / Pin
-		if(this.iPinOrCoinDefIndex)
-			SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, this.iPinOrCoinDefIndex);
+		if (g_fOnItemChangedPreForward.FunctionCount)
+		{
+			static Action retAction;
+			
+			Call_StartForward(g_fOnItemChangedPreForward);
+			Call_PushCell(client);		// int client
+			Call_PushCell(item);		// int item
+			Call_PushCell(oldvalue);	// int oldvalue
+			Call_PushCellRef(newvalue);	// int &newvalue
+			Call_PushCell(isFirstLoad);	// bool isFirstLoad
+			Call_Finish(retAction);
+			
+			if(retAction >= Plugin_Handled)
+				return false;
+		}
+		
+		if(!isFirstLoad || newvalue)
+		{
+			switch (item)
+			{
+				// Music-Kit
+				case MCITEM_MUSICKIT:
+				{
+					// Change in-game | 0 = Player default item
+					SetEntProp(client, Prop_Send, "m_unMusicID", (!newvalue) ? this.iOwnMusicKitNum : newvalue);
+					
+					// Change global variable
+					this.iMusicKitNum = newvalue;
+				}
+				// Coin / Pin
+				case MCITEM_PIN, MCITEM_COIN, MCITEM_COIN_OR_PIN:
+				{
+					// Change in-game | 0 = Player default item
+					SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, (!newvalue) ? GetClientActiveItemDefIndex(client, item) : newvalue);
+					
+					// Change global variable
+					this.iPinOrCoinDefIndex = newvalue;
+				}
+			}
+		}
+		
+		if (g_fOnItemChangedPostForward.FunctionCount)
+		{
+			Call_StartForward(g_fOnItemChangedPostForward);
+			Call_PushCell(client);		// int client
+			Call_PushCell(item);		// int item
+			Call_PushCell(oldvalue);	// int oldvalue
+			Call_PushCell(newvalue);	// int newvalue
+			Call_PushCell(isFirstLoad);	// bool isFirstLoad
+			Call_Finish();
+		}
+		
+		return true;
 	}
 }
 
@@ -98,13 +146,84 @@ public Plugin myinfo =
 	name = "MiscChanger", 
 	author = "Natanel 'LuqS'", 
 	description = "Allowing Players to change thier CS:GO miscellaneous items (Music-Kit / Coin / Pin).", 
-	version = "1.0.0", 
+	version = "1.1.0", 
 	url = "https://steamcommunity.com/id/luqsgood || Discord: LuqS#6505 || https://github.com/Natanel-Shitrit"
 }
 
 /*********************
 		Events
 **********************/
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	if(GetEngineVersion() != Engine_CSGO)
+	{
+		strcopy(error, err_max, "This plugin is for CSGO only.");
+
+		return APLRes_SilentFailure;
+	}
+
+	// Natives
+	CreateNative("MiscChanger_GetClientItem", Native_GetClientItem);
+	CreateNative("MiscChanger_SetClientItem", Native_SetClientItem);
+	CreateNative("MiscChanger_GetClientItemDefault", Native_GetClientItemDefault);
+	
+	// Forwards
+	//----------------------------------------------------------------------------------int client, int itemLoaded, int oldvalue, int &newvalue, bool firstLoad
+	g_fOnItemChangedPreForward = new GlobalForward("MiscChanger_OnItemChangedPre", ET_Hook, Param_Cell, Param_Cell, Param_Cell, Param_CellByRef, Param_Cell);
+	//------------------------------------------------------------------------------------int client, int itemLoaded, int oldvalue, int newvalue, bool firstLoad, bool changed
+	g_fOnItemChangedPostForward = new GlobalForward("MiscChanger_OnItemChangedPost", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
+
+	RegPluginLibrary("MiscChanger");
+
+	return APLRes_Success;
+}
+
+int Native_GetClientItem(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1); 
+	
+	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
+		ThrowNativeError(0, "Invalid client.");
+	
+	MCItem item = GetNativeCell(2);
+	
+	if(!(MCITEM_START < item < MCITEM_END))
+		ThrowNativeError(1, "Invalid Item.");
+	
+	return item == MCITEM_MUSICKIT ? g_PlayerInfo[client].iMusicKitNum : g_PlayerInfo[client].iPinOrCoinDefIndex;
+}
+
+int Native_SetClientItem(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1); 
+	
+	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
+		ThrowNativeError(0, "Invalid client.");
+	
+	MCItem item = GetNativeCell(2);
+	
+	if(!(MCITEM_START < item < MCITEM_END))
+		ThrowNativeError(1, "Invalid Item.");
+	
+	int value = GetNativeCell(3);
+	g_PlayerInfo[client].SaveAndApplyItem(client, item, value);
+}
+
+int Native_GetClientItemDefault(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1); 
+	
+	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
+		ThrowNativeError(0, "Invalid client.");
+	
+	MCItem item = GetNativeCell(2);
+	
+	if(!(MCITEM_START < item < MCITEM_END))
+		ThrowNativeError(1, "Invalid Item.");
+	
+	return item == MCITEM_MUSICKIT ? g_PlayerInfo[client].iOwnMusicKitNum : GetClientActiveItemDefIndex(client, item);
+}
 
 public void OnPluginStart()
 {
@@ -334,10 +453,8 @@ void T_OnClientDataRecived(Database db, DBResultSet results, const char[] error,
 		
 		// 0 - 'musickit_num'
 		// 1 - 'coin_or_pin_def_index'
-		g_PlayerInfo[client].iMusicKitNum 		= results.FetchInt(0);
-		g_PlayerInfo[client].iPinOrCoinDefIndex = results.FetchInt(1);
-		
-		g_PlayerInfo[client].ApplyItems(client);
+		g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_MUSICKIT, results.FetchInt(0), true);
+		g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_COIN_OR_PIN, results.FetchInt(1), true);
 	}
 }
 
@@ -518,19 +635,19 @@ int MusicKitsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 	{
 		case MenuAction_Select:
 		{
-			char sMusicKitNum[4], sMusicKitDisplayName[MUSIC_KIT_MAX_NAME_LEN];
-			menu.GetItem(param2, sMusicKitNum, sizeof(sMusicKitNum), _, sMusicKitDisplayName, MUSIC_KIT_MAX_NAME_LEN);
+			char sMusicKitNum[4];
+			menu.GetItem(param2, sMusicKitNum, sizeof(sMusicKitNum));
 			int iMusicKitNum = StringToInt(sMusicKitNum);
 			
-			// Change Client Music-Kit in the scoreboard.
-			SetEntProp(client, Prop_Send, "m_unMusicID", (!iMusicKitNum) ? g_PlayerInfo[client].iOwnMusicKitNum : iMusicKitNum);
-			
-			// Save client prefrence.
-			g_PlayerInfo[client].iMusicKitNum = iMusicKitNum;
-			
-			// Alert him that the Music-Kit has been changed.
-			PrintToChat(client, "%s \x04Successfully\x01 changed your Music-Kit to \x02%s\x01!", PREFIX, sMusicKitDisplayName);
-			
+			// Change Client Music-Kit in the scoreboard and save his prefrence.
+			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_MUSICKIT, (!iMusicKitNum) ? g_PlayerInfo[client].iOwnMusicKitNum : iMusicKitNum))
+			{
+				char sMusicKitDisplayName[MUSIC_KIT_MAX_NAME_LEN];
+				menu.GetItem(g_PlayerInfo[client].iMusicKitNum, "", 0, _, sMusicKitDisplayName, MUSIC_KIT_MAX_NAME_LEN);
+				
+				PrintToChat(client, "%s \x04Successfully\x01 changed your Music-Kit to \x02%s\x01!", PREFIX, sMusicKitDisplayName); // Alert him that the Music-Kit has been changed.
+			}
+				
 			OpenMusicKitsMenu(client, menu.Selection, sFindMusicKit);
 		}
 		case MenuAction_End:
@@ -661,14 +778,9 @@ int CoinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 			menu.GetItem(param2, sCoinDefIndex, sizeof(sCoinDefIndex), _, sCoinDisplayName, PIN_MAX_NAME_LEN);
 			int iCoinDefIndex = StringToInt(sCoinDefIndex);
 			
-			// Change Client Coin in the scoreboard.
-			SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, !iCoinDefIndex ? GetClientActiveItemDefIndex(client, 0) : iCoinDefIndex);
-			
-			// Save client prefrence.
-			g_PlayerInfo[client].iPinOrCoinDefIndex = iCoinDefIndex;
-			
-			// Alert him that the coin has been changed.
-			PrintToChat(client, "%s \x04Successfully\x01 changed your Coin to \x02%s\x01!", PREFIX, sCoinDisplayName);
+			// Change Client Coin in the scoreboard and save his prefrence.
+			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_COIN, !iCoinDefIndex ? GetClientActiveItemDefIndex(client, MCITEM_COIN) : iCoinDefIndex))
+				PrintToChat(client, "%s \x04Successfully\x01 changed your Coin to \x02%s\x01!", PREFIX, sCoinDisplayName); // Alert him that the coin has been changed.
 			
 			if(!iCoinDefIndex)
 				OpenCoinsMenu(client);
@@ -755,14 +867,9 @@ int PinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 			menu.GetItem(param2, sPinDefIndex, sizeof(sPinDefIndex), _, sPinDisplayName, PIN_MAX_NAME_LEN);
 			int iPinDefIndex = StringToInt(sPinDefIndex);
 			
-			// Change Client Pin in the scoreboard.
-			SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, !iPinDefIndex ? GetClientActiveItemDefIndex(client, 1) : iPinDefIndex);
-			
-			// Save client prefrence.
-			g_PlayerInfo[client].iPinOrCoinDefIndex = iPinDefIndex;
-			
-			// Alert him that the Pin has been changed.
-			PrintToChat(client, "%s \x04Successfully\x01 changed your Pin to \x02%s\x01!", PREFIX, sPinDisplayName);
+			// Change Client Pin in the scoreboard and save his prefrence.
+			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_PIN, !iPinDefIndex ? GetClientActiveItemDefIndex(client, MCITEM_PIN) : iPinDefIndex))
+				PrintToChat(client, "%s \x04Successfully\x01 changed your Pin to \x02%s\x01!", PREFIX, sPinDisplayName); // Alert him that the Pin has been changed.
 			
 			OpenPinsMenu(client, menu.Selection, sFindPin);
 		}
@@ -863,7 +970,7 @@ any[] GetCoinByIndex(int index)
 }
 
 // 0 - Coin | 1 - Pin
-int GetClientActiveItemDefIndex(int client, int itemType)
+int GetClientActiveItemDefIndex(int client, MCItem itemType)
 {
 	CCSPlayerInventory clientInventory = PTaH_GetPlayerInventory(client);
 	int iLastUsedItemDefIndexFromInventory;
@@ -871,7 +978,7 @@ int GetClientActiveItemDefIndex(int client, int itemType)
 	{
 		int iCurrentItemDefIndex = clientInventory.GetItem(i).GetItemDefinition().GetDefinitionIndex();
 		// UGLY AF
-		if(!itemType ? eItems_GetCoinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0) : eItems_GetPinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0))
+		if(itemType == MCITEM_COIN ? eItems_GetCoinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0) : eItems_GetPinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0))
 			iLastUsedItemDefIndexFromInventory = iCurrentItemDefIndex;
 	}
 	
