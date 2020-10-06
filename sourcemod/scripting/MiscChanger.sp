@@ -283,7 +283,7 @@ public void Frame_ItemsSync(any data)
 		char sCurrentMusicKitName[MUSIC_KIT_MAX_NAME_LEN];
 		if (!eItems_GetMusicKitDisplayNameByMusicKitNum(iCurrentMusicKit, sCurrentMusicKitName, sizeof(sCurrentMusicKitName)))
 		{
-			LogError("Failed to load Nusic-Kit #%d Display Name, Skipping", iCurrentMusicKit);
+			LogError("Failed to load Music-Kit #%d Display Name, Skipping", iCurrentMusicKit);
 			continue;
 		}
 		
