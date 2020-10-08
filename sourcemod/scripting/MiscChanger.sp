@@ -51,6 +51,9 @@ ArrayList g_alPins;
 Menu g_mMainMenu;
 Menu g_mCoinsSetsMenu;
 
+// Settings
+bool g_bShowEconPreview;
+
 enum struct Pin
 {
 	char DisplayName[PIN_MAX_NAME_LEN];
@@ -66,6 +69,7 @@ enum struct Coin
 enum struct PlayerInfo
 {
 	int iOwnMusicKitNum;
+	int iOwnPinOrCoin;
 	
 	int iMusicKitNum;
 	int iPinOrCoinDefIndex;
@@ -74,6 +78,7 @@ enum struct PlayerInfo
 	void Reset()
 	{
 		this.iOwnMusicKitNum = 0;
+		this.iOwnPinOrCoin = 0;
 		this.iMusicKitNum = 0;
 		this.iPinOrCoinDefIndex = 0;
 		this.iAccountID = 0;
@@ -116,10 +121,15 @@ enum struct PlayerInfo
 				case MCITEM_PIN, MCITEM_COIN, MCITEM_COIN_OR_PIN:
 				{
 					// Change in-game | 0 = Player default item
-					SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, (!newvalue) ? GetClientActiveItemDefIndex(client, item) : newvalue);
+					SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, (!newvalue) ? this.iOwnPinOrCoin : newvalue);
 					
 					// Change global variable
 					this.iPinOrCoinDefIndex = newvalue;
+					
+					static CEconItemDefinition newItemDef;
+		
+					if(g_bShowEconPreview && (newItemDef = PTaH_GetItemDefinitionByDefIndex((!newvalue) ? this.iOwnPinOrCoin : newvalue)))
+						PrintHintItemEconImage(client, newItemDef);
 				}
 			}
 		}
@@ -146,84 +156,13 @@ public Plugin myinfo =
 	name = "MiscChanger", 
 	author = "Natanel 'LuqS'", 
 	description = "Allowing Players to change thier CS:GO miscellaneous items (Music-Kit / Coin / Pin).", 
-	version = "1.1.0", 
+	version = "1.2.0", 
 	url = "https://steamcommunity.com/id/luqsgood || Discord: LuqS#6505 || https://github.com/Natanel-Shitrit"
 }
 
 /*********************
 		Events
 **********************/
-
-public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
-{
-	if(GetEngineVersion() != Engine_CSGO)
-	{
-		strcopy(error, err_max, "This plugin is for CSGO only.");
-
-		return APLRes_SilentFailure;
-	}
-
-	// Natives
-	CreateNative("MiscChanger_GetClientItem", Native_GetClientItem);
-	CreateNative("MiscChanger_SetClientItem", Native_SetClientItem);
-	CreateNative("MiscChanger_GetClientItemDefault", Native_GetClientItemDefault);
-	
-	// Forwards
-	//----------------------------------------------------------------------------------int client, int itemLoaded, int oldvalue, int &newvalue, bool firstLoad
-	g_fOnItemChangedPreForward = new GlobalForward("MiscChanger_OnItemChangedPre", ET_Hook, Param_Cell, Param_Cell, Param_Cell, Param_CellByRef, Param_Cell);
-	//------------------------------------------------------------------------------------int client, int itemLoaded, int oldvalue, int newvalue, bool firstLoad, bool changed
-	g_fOnItemChangedPostForward = new GlobalForward("MiscChanger_OnItemChangedPost", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
-
-	RegPluginLibrary("MiscChanger");
-
-	return APLRes_Success;
-}
-
-int Native_GetClientItem(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1); 
-	
-	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
-		ThrowNativeError(0, "Invalid client.");
-	
-	MCItem item = GetNativeCell(2);
-	
-	if(!(MCITEM_START < item < MCITEM_END))
-		ThrowNativeError(1, "Invalid Item.");
-	
-	return item == MCITEM_MUSICKIT ? g_PlayerInfo[client].iMusicKitNum : g_PlayerInfo[client].iPinOrCoinDefIndex;
-}
-
-int Native_SetClientItem(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1); 
-	
-	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
-		ThrowNativeError(0, "Invalid client.");
-	
-	MCItem item = GetNativeCell(2);
-	
-	if(!(MCITEM_START < item < MCITEM_END))
-		ThrowNativeError(1, "Invalid Item.");
-	
-	int value = GetNativeCell(3);
-	g_PlayerInfo[client].SaveAndApplyItem(client, item, value);
-}
-
-int Native_GetClientItemDefault(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1); 
-	
-	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
-		ThrowNativeError(0, "Invalid client.");
-	
-	MCItem item = GetNativeCell(2);
-	
-	if(!(MCITEM_START < item < MCITEM_END))
-		ThrowNativeError(1, "Invalid Item.");
-	
-	return item == MCITEM_MUSICKIT ? g_PlayerInfo[client].iOwnMusicKitNum : GetClientActiveItemDefIndex(client, item);
-}
 
 public void OnPluginStart()
 {
@@ -258,6 +197,29 @@ public void OnPluginEnd()
 			OnClientDisconnect(iCurrentClient);
 }
 
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	if(GetEngineVersion() != Engine_CSGO)
+	{
+		strcopy(error, err_max, "This plugin is for CSGO only.");
+
+		return APLRes_SilentFailure;
+	}
+
+	// Natives
+	CreateNative("MiscChanger_GetClientItem", Native_GetClientItem);
+	CreateNative("MiscChanger_SetClientItem", Native_SetClientItem);
+	CreateNative("MiscChanger_GetClientItemDefault", Native_GetClientItemDefault);
+	
+	// Forwards
+	g_fOnItemChangedPreForward = new GlobalForward("MiscChanger_OnItemChangedPre", ET_Hook, Param_Cell, Param_Cell, Param_Cell, Param_CellByRef, Param_Cell);
+	g_fOnItemChangedPostForward = new GlobalForward("MiscChanger_OnItemChangedPost", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
+
+	RegPluginLibrary("MiscChanger");
+
+	return APLRes_Success;
+}
+
 // eItems has been loaded AFTER our plugin.
 public void eItems_OnItemsSynced()
 {
@@ -283,7 +245,7 @@ public void Frame_ItemsSync(any data)
 		char sCurrentMusicKitName[MUSIC_KIT_MAX_NAME_LEN];
 		if (!eItems_GetMusicKitDisplayNameByMusicKitNum(iCurrentMusicKit, sCurrentMusicKitName, sizeof(sCurrentMusicKitName)))
 		{
-			LogError("Failed to load Nusic-Kit #%d Display Name, Skipping", iCurrentMusicKit);
+			LogError("Failed to load Music-Kit #%d Display Name, Skipping", iCurrentMusicKit);
 			continue;
 		}
 		
@@ -353,6 +315,8 @@ public void OnMapStart()
 	if (!kv.ImportFromFile(sFilePath))
 		SetFailState("%s Couldn't load plugin config.", PREFIX_NO_COLOR);
 	
+	g_bShowEconPreview = view_as<bool>(kv.GetNum("ShowCoinOrPinPreview", 1));
+	
 	// Load Main-Menu Commands
 	if (!LoadCommandsFromKV(kv, "MainMenu", Command_MainMenu, "Opens the main menu of MiscChanger plugin", true))
 		LogError("[KV Config] Faild To Load Main Menu Commands");
@@ -378,12 +342,8 @@ public Action Event_OnPlayerConnectFull(Event event, const char[] name, bool don
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	
-	if(IsFakeClient(client))
-		return;
-	
-	g_PlayerInfo[client].iOwnMusicKitNum = GetEntProp(client, Prop_Send, "m_unMusicID");
-	
-	AskForPlayerData(client);
+	if(!IsFakeClient(client))
+		ProcessPlayerData(client);
 }
 
 public void OnClientDisconnect(int client)
@@ -430,7 +390,7 @@ void T_OnDatabaseReady(Database db, DBResultSet results, const char[] error, any
 	// Late Load Support
 	for (int iCurrentClient = 1; iCurrentClient <= MaxClients; iCurrentClient++)
 		if(IsClientInGame(iCurrentClient))
-			AskForPlayerData(iCurrentClient);
+			ProcessPlayerData(iCurrentClient);
 }
 
 void T_OnClientDataRecived(Database db, DBResultSet results, const char[] error, any data)
@@ -467,8 +427,14 @@ void T_OnClientSavedDataResponse(Database db, DBResultSet results, const char[] 
 	}
 }
 
-void AskForPlayerData(int client)
+// Processing the player data is:
+// 1. Getting the client default items. (And his Steam-Account ID)
+// 2. Get the prefrences from the database.
+void ProcessPlayerData(int client)
 {
+	g_PlayerInfo[client].iOwnPinOrCoin = GetClientActivePinOrCoin(client);
+	g_PlayerInfo[client].iOwnMusicKitNum = GetEntProp(client, Prop_Send, "m_unMusicID");
+	
 	g_PlayerInfo[client].iAccountID = GetSteamAccountID(client);
 	
 	// If the database is avilable, Ask for the data.
@@ -628,26 +594,22 @@ void OpenMusicKitsMenu(int client, int startItem = 0, const char[] sFindMusicKit
 
 int MusicKitsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 {
-	char sFindMusicKit[64];
-	menu.GetItem(0, sFindMusicKit, sizeof(sFindMusicKit));
-	
 	switch (action)
 	{
 		case MenuAction_Select:
 		{
-			char sMusicKitNum[4];
-			menu.GetItem(param2, sMusicKitNum, sizeof(sMusicKitNum));
-			int iMusicKitNum = StringToInt(sMusicKitNum);
-			
 			// Change Client Music-Kit in the scoreboard and save his prefrence.
-			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_MUSICKIT, (!iMusicKitNum) ? g_PlayerInfo[client].iOwnMusicKitNum : iMusicKitNum))
+			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_MUSICKIT, param2))
 			{
 				char sMusicKitDisplayName[MUSIC_KIT_MAX_NAME_LEN];
 				menu.GetItem(g_PlayerInfo[client].iMusicKitNum, "", 0, _, sMusicKitDisplayName, MUSIC_KIT_MAX_NAME_LEN);
 				
 				PrintToChat(client, "%s \x04Successfully\x01 changed your Music-Kit to \x02%s\x01!", PREFIX, sMusicKitDisplayName); // Alert him that the Music-Kit has been changed.
 			}
-				
+			
+			// Reopen the menu where it was.
+			char sFindMusicKit[64];
+			menu.GetItem(0, sFindMusicKit, sizeof(sFindMusicKit));
 			OpenMusicKitsMenu(client, menu.Selection, sFindMusicKit);
 		}
 		case MenuAction_End:
@@ -751,9 +713,7 @@ int CoinsSetsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 				BuildCoinsMenu(client, "", param2 - 1, menu.Selection).Display(client, MENU_TIME_FOREVER);
 			// If the client clicked on the 'reset' button.
 			else
-			{
 				CoinsMenuHandler(menu, MenuAction_Select, client, 0);
-			}
 		}
 		case MenuAction_DrawItem:
 		{
@@ -779,9 +739,15 @@ int CoinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 			int iCoinDefIndex = StringToInt(sCoinDefIndex);
 			
 			// Change Client Coin in the scoreboard and save his prefrence.
-			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_COIN, !iCoinDefIndex ? GetClientActiveItemDefIndex(client, MCITEM_COIN) : iCoinDefIndex))
-				PrintToChat(client, "%s \x04Successfully\x01 changed your Coin to \x02%s\x01!", PREFIX, sCoinDisplayName); // Alert him that the coin has been changed.
-			
+			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_COIN, iCoinDefIndex))
+			{
+				if(g_PlayerInfo[client].iPinOrCoinDefIndex)
+					eItems_GetCoinDisplayNameByDefIndex(g_PlayerInfo[client].iPinOrCoinDefIndex, sCoinDisplayName, PIN_MAX_NAME_LEN);
+				
+				// Alert him that the coin has been changed.
+				PrintToChat(client, "%s \x04Successfully\x01 changed your Coin to \x02%s\x01!", PREFIX, sCoinDisplayName); 
+			}
+				
 			if(!iCoinDefIndex)
 				OpenCoinsMenu(client);
 			else
@@ -856,9 +822,6 @@ void OpenPinsMenu(int client, int startItem = 0, const char[] sFindPin = "")
 
 int PinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 {
-	char sFindPin[64];
-	menu.GetItem(0, sFindPin, sizeof(sFindPin));
-	
 	switch (action)
 	{
 		case MenuAction_Select:
@@ -868,9 +831,16 @@ int PinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 			int iPinDefIndex = StringToInt(sPinDefIndex);
 			
 			// Change Client Pin in the scoreboard and save his prefrence.
-			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_PIN, !iPinDefIndex ? GetClientActiveItemDefIndex(client, MCITEM_PIN) : iPinDefIndex))
+			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_PIN, iPinDefIndex))
+			{
+				if(g_PlayerInfo[client].iPinOrCoinDefIndex)
+					eItems_GetPinDisplayNameByDefIndex(g_PlayerInfo[client].iPinOrCoinDefIndex, sPinDisplayName, PIN_MAX_NAME_LEN);
+				
 				PrintToChat(client, "%s \x04Successfully\x01 changed your Pin to \x02%s\x01!", PREFIX, sPinDisplayName); // Alert him that the Pin has been changed.
-			
+			}
+				
+			char sFindPin[64];
+			menu.GetItem(0, sFindPin, sizeof(sFindPin));
 			OpenPinsMenu(client, menu.Selection, sFindPin);
 		}
 		case MenuAction_End:
@@ -881,6 +851,56 @@ int PinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 }
 
 /**********************
+		Natives
+***********************/
+
+int Native_GetClientItem(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1); 
+	
+	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
+		ThrowNativeError(0, "Invalid client.");
+	
+	MCItem item = GetNativeCell(2);
+	
+	if(!(MCITEM_START < item < MCITEM_END))
+		ThrowNativeError(1, "Invalid Item.");
+	
+	return item == MCITEM_MUSICKIT ? g_PlayerInfo[client].iMusicKitNum : g_PlayerInfo[client].iPinOrCoinDefIndex;
+}
+
+int Native_SetClientItem(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1); 
+	
+	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
+		ThrowNativeError(0, "Invalid client.");
+	
+	MCItem item = GetNativeCell(2);
+	
+	if(!(MCITEM_START < item < MCITEM_END))
+		ThrowNativeError(1, "Invalid Item.");
+	
+	int value = GetNativeCell(3);
+	g_PlayerInfo[client].SaveAndApplyItem(client, item, value);
+}
+
+int Native_GetClientItemDefault(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1); 
+	
+	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
+		ThrowNativeError(0, "Invalid client.");
+	
+	MCItem item = GetNativeCell(2);
+	
+	if(!(MCITEM_START < item < MCITEM_END))
+		ThrowNativeError(1, "Invalid Item.");
+	
+	return item == MCITEM_MUSICKIT ? g_PlayerInfo[client].iOwnMusicKitNum : g_PlayerInfo[client].iOwnPinOrCoin;
+}
+
+/**********************
 		Helpers
 ***********************/
 
@@ -888,6 +908,9 @@ int PinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 void LoadGameData()
 {
 	GameData hGameData = new GameData("misc.game.csgo");
+	
+	if(!hGameData)
+		SetFailState("'sourcemod/gamedata/misc.game.csgo.txt' is missing!");
 	
 	// https://github.com/perilouswithadollarsign/cstrike15_src/blob/29e4c1fda9698d5cebcdaf1a0de4b829fa149bf8/game/server/cstrike15/cs_player.cpp#L16369-L16372
 	// Changes the the rank of the player ( this case use is the coin )
@@ -969,18 +992,79 @@ any[] GetCoinByIndex(int index)
 	return coin;
 }
 
-// 0 - Coin | 1 - Pin
-int GetClientActiveItemDefIndex(int client, MCItem itemType)
+int GetClientActivePinOrCoin(int client)
 {
+	// Get the player inventory
 	CCSPlayerInventory clientInventory = PTaH_GetPlayerInventory(client);
-	int iLastUsedItemDefIndexFromInventory;
-	for (int i = 0; i < clientInventory.GetItemsCount(); i++)
+	
+	if(!clientInventory)
+		return 0;
+	
+	// Start from the end -> find the first item
+	for (int iCurrentItemDefIndex, iCurrentItem = clientInventory.GetItemsCount(); --iCurrentItem >= 0;)
 	{
-		int iCurrentItemDefIndex = clientInventory.GetItem(i).GetItemDefinition().GetDefinitionIndex();
-		// UGLY AF
-		if(itemType == MCITEM_COIN ? eItems_GetCoinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0) : eItems_GetPinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0))
-			iLastUsedItemDefIndexFromInventory = iCurrentItemDefIndex;
+		// Get Item View.
+		CEconItemView currentItemView = clientInventory.GetItem(iCurrentItem);
+		
+		// Validate Item View.
+		if(!currentItemView)
+			continue;
+		
+		// Get Item Definition.
+		CEconItemDefinition currentItemDef = currentItemView.GetItemDefinition();
+		
+		// Validate Item Definition.
+		if(!currentItemDef)
+			continue;
+		
+		// Get Definition Index
+		iCurrentItemDefIndex = currentItemDef.GetDefinitionIndex();
+		
+		// Check if that is a Pin or Coin
+		if(eItems_GetCoinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0) || eItems_GetPinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0))
+			return iCurrentItemDefIndex;
 	}
 	
-	return iLastUsedItemDefIndexFromInventory;
+	return 0;
+}
+
+void PrintHintItemEconImage(int client, CEconItemDefinition itemDef, bool isFirstRun = true)
+{
+	static char sMessage[PLATFORM_MAX_PATH];
+
+	if(!itemDef)
+		return;
+	
+	Protobuf hMessage = view_as<Protobuf>(StartMessageOne("TextMsg", client));
+	
+	itemDef.GetEconImage(sMessage, sizeof(sMessage));
+	Format(sMessage, sizeof(sMessage), "</font><img src='file://{images_econ}/%s.png'/><script>", sMessage);
+	
+	hMessage.SetInt("msg_dst", 4);
+	hMessage.AddString("params", "#SFUI_ContractKillStart");
+	hMessage.AddString("params", sMessage);
+	hMessage.AddString("params", NULL_STRING);
+	hMessage.AddString("params", NULL_STRING);
+	hMessage.AddString("params", NULL_STRING);
+	hMessage.AddString("params", NULL_STRING);
+
+	EndMessage();
+	
+	if(isFirstRun)
+	{
+		DataPack dp = new DataPack();
+		CreateDataTimer(0.1, Timer_PrintHintEconRepeat, dp);
+		dp.WriteCell(itemDef);
+		dp.WriteCell(client);
+	}
+}
+
+Action Timer_PrintHintEconRepeat(Handle timer, DataPack dp)
+{
+	dp.Reset();
+	
+	CEconItemDefinition itemDef = dp.ReadCell();
+	int client = dp.ReadCell();
+	
+	PrintHintItemEconImage(client, itemDef, false);
 }
