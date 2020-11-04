@@ -128,7 +128,7 @@ enum struct PlayerInfo
 					
 					static CEconItemDefinition newItemDef;
 		
-					if(g_bShowEconPreview && (newItemDef = PTaH_GetItemDefinitionByDefIndex((!newvalue) ? this.iOwnPinOrCoin : newvalue)))
+					if(!isFirstLoad && g_bShowEconPreview && (newItemDef = PTaH_GetItemDefinitionByDefIndex((!newvalue) ? this.iOwnPinOrCoin : newvalue)))
 						PrintHintItemEconImage(client, newItemDef);
 				}
 			}
@@ -156,7 +156,7 @@ public Plugin myinfo =
 	name = "MiscChanger", 
 	author = "Natanel 'LuqS'", 
 	description = "Allowing Players to change thier CS:GO miscellaneous items (Music-Kit / Coin / Pin).", 
-	version = "1.2.0", 
+	version = "1.2.1", 
 	url = "https://steamcommunity.com/id/luqsgood || Discord: LuqS#6505 || https://github.com/Natanel-Shitrit"
 }
 
@@ -923,6 +923,8 @@ void LoadGameData()
 	
 	if (!(g_hSetRank = EndPrepSDKCall()))
 		SetFailState("Failed to get CCSPlayer::SetRank signature");
+	
+	delete hGameData;
 }
 
 // Create ArrayList for the data.
