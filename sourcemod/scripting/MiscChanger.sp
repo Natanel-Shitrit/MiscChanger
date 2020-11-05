@@ -9,6 +9,8 @@
 #define PREFIX " \x04"... PREFIX_NO_COLOR ..."\x01"
 #define PREFIX_NO_COLOR "[MiscChanger]"
 
+#define LOADOUT_POSITION_FLAIR0 55
+
 // Database
 Database g_Database;
 
@@ -68,6 +70,8 @@ enum struct Coin
 
 enum struct PlayerInfo
 {
+	bool bFoundDefaults;
+	
 	int iOwnMusicKitNum;
 	int iOwnPinOrCoin;
 	
@@ -77,6 +81,7 @@ enum struct PlayerInfo
 	
 	void Reset()
 	{
+		this.bFoundDefaults = false;
 		this.iOwnMusicKitNum = 0;
 		this.iOwnPinOrCoin = 0;
 		this.iMusicKitNum = 0;
@@ -126,7 +131,7 @@ enum struct PlayerInfo
 					// Change global variable
 					this.iPinOrCoinDefIndex = newvalue;
 					
-					static CEconItemDefinition newItemDef;
+					CEconItemDefinition newItemDef;
 		
 					if(!isFirstLoad && g_bShowEconPreview && (newItemDef = PTaH_GetItemDefinitionByDefIndex((!newvalue) ? this.iOwnPinOrCoin : newvalue)))
 						PrintHintItemEconImage(client, newItemDef);
@@ -156,7 +161,7 @@ public Plugin myinfo =
 	name = "MiscChanger", 
 	author = "Natanel 'LuqS'", 
 	description = "Allowing Players to change thier CS:GO miscellaneous items (Music-Kit / Coin / Pin).", 
-	version = "1.2.1", 
+	version = "1.2.2", 
 	url = "https://steamcommunity.com/id/luqsgood || Discord: LuqS#6505 || https://github.com/Natanel-Shitrit"
 }
 
@@ -183,7 +188,7 @@ public void OnPluginStart()
 		eItems_OnItemsSynced();
 	
 	// Hook event when we get the player default items.
-	HookEvent("player_connect_full", Event_OnPlayerConnectFull);
+	HookEvent("player_team", OnPlayerTeamChange);
 	
 	// Connect to the database
 	Database.Connect(T_OnDBConnected, "MiscChanger");
@@ -336,14 +341,36 @@ public void OnMapStart()
 	// Don't leak handles.
 	kv.Close();
 }
-
-// Client sent the final message to the server and he is fully connected.
-public Action Event_OnPlayerConnectFull(Event event, const char[] name, bool dontBroadcast)
+void OnPlayerTeamChange(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = GetClientOfUserId(event.GetInt("userid"));
+	int client = GetClientOfUserId(event.GetInt("userid")), team = event.GetInt("team");
 	
-	if(!IsFakeClient(client))
+	if(client && !IsFakeClient(client) && !g_PlayerInfo[client].bFoundDefaults && team > 1)
 		ProcessPlayerData(client);
+}
+
+// Processing the player data is:
+// 1. Getting the client default items. (And his Steam-Account ID)
+// 2. Get the prefrences from the database.
+void ProcessPlayerData(int client)
+{
+	// Player default items.
+	g_PlayerInfo[client].iOwnPinOrCoin = GetClientActivePinOrCoin(PTaH_GetPlayerInventory(client));
+	g_PlayerInfo[client].iOwnMusicKitNum = GetEntProp(client, Prop_Send, "m_unMusicID");
+	
+	// We found the default values.
+	g_PlayerInfo[client].bFoundDefaults = true;
+	
+	// Get the player account id so we find his data in the database.
+	g_PlayerInfo[client].iAccountID = GetSteamAccountID(client);
+	
+	// If the database is avilable, Ask for the data.
+	if(g_Database)
+	{
+		char sQuery[256];
+		Format(sQuery, sizeof(sQuery), "SELECT `musickit_num`, `coin_or_pin_def_index` FROM `misc_changer` WHERE `account_id` = %d", g_PlayerInfo[client].iAccountID);
+		g_Database.Query(T_OnClientDataRecived, sQuery, GetClientUserId(client));
+	}
 }
 
 public void OnClientDisconnect(int client)
@@ -404,7 +431,6 @@ void T_OnClientDataRecived(Database db, DBResultSet results, const char[] error,
 	if(results.FetchRow())
 	{
 		int client = GetClientOfUserId(data);
-
 		if(!(0 < client <= MaxClients) || !IsClientConnected(client))
 		{
 			LogError("[T_OnClientDataRecived] Client disconnected before fetching data, aborting.");
@@ -424,25 +450,6 @@ void T_OnClientSavedDataResponse(Database db, DBResultSet results, const char[] 
 	{
 		LogError("[T_OnClientSavedDataResponse] Query Failed | Error: %s", error);
 		return;
-	}
-}
-
-// Processing the player data is:
-// 1. Getting the client default items. (And his Steam-Account ID)
-// 2. Get the prefrences from the database.
-void ProcessPlayerData(int client)
-{
-	g_PlayerInfo[client].iOwnPinOrCoin = GetClientActivePinOrCoin(client);
-	g_PlayerInfo[client].iOwnMusicKitNum = GetEntProp(client, Prop_Send, "m_unMusicID");
-	
-	g_PlayerInfo[client].iAccountID = GetSteamAccountID(client);
-	
-	// If the database is avilable, Ask for the data.
-	if(g_Database)
-	{
-		char sQuery[256];
-		Format(sQuery, sizeof(sQuery), "SELECT `musickit_num`, `coin_or_pin_def_index` FROM `misc_changer` WHERE `account_id` = %d", g_PlayerInfo[client].iAccountID);
-		g_Database.Query(T_OnClientDataRecived, sQuery, GetClientUserId(client));
 	}
 }
 
@@ -994,40 +1001,26 @@ any[] GetCoinByIndex(int index)
 	return coin;
 }
 
-int GetClientActivePinOrCoin(int client)
+int GetClientActivePinOrCoin(CCSPlayerInventory pInventory)
 {
-	// Get the player inventory
-	CCSPlayerInventory clientInventory = PTaH_GetPlayerInventory(client);
-	
-	if(!clientInventory)
+	if(!pInventory)
 		return 0;
 	
-	// Start from the end -> find the first item
-	for (int iCurrentItemDefIndex, iCurrentItem = clientInventory.GetItemsCount(); --iCurrentItem >= 0;)
-	{
-		// Get Item View.
-		CEconItemView currentItemView = clientInventory.GetItem(iCurrentItem);
+	// Get Item View.
+	CEconItemView currentItemView = pInventory.GetItemInLoadout(0, LOADOUT_POSITION_FLAIR0);
 		
-		// Validate Item View.
-		if(!currentItemView)
-			continue;
+	// Validate Item View.
+	if(!currentItemView)
+		return 0;
 		
-		// Get Item Definition.
-		CEconItemDefinition currentItemDef = currentItemView.GetItemDefinition();
-		
-		// Validate Item Definition.
-		if(!currentItemDef)
-			continue;
-		
-		// Get Definition Index
-		iCurrentItemDefIndex = currentItemDef.GetDefinitionIndex();
-		
-		// Check if that is a Pin or Coin
-		if(eItems_GetCoinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0) || eItems_GetPinDisplayNameByDefIndex(iCurrentItemDefIndex, "", 0))
-			return iCurrentItemDefIndex;
-	}
+	// Get Item Definition.
+	CEconItemDefinition currentItemDef = currentItemView.GetItemDefinition();
 	
-	return 0;
+	// Validate Item Definition.
+	if(!currentItemDef)
+		return 0;
+	
+	return currentItemDef.GetDefinitionIndex();
 }
 
 void PrintHintItemEconImage(int client, CEconItemDefinition itemDef, bool isFirstRun = true)
