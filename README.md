@@ -16,9 +16,9 @@ Allowing Players to change their CS:GO miscellaneous items (Music-Kit / Coin / P
 To change / add / remove commands the plugin use, edit the configuration file found in `sourcemod/configs/MiscChanger`, It's pretty straightforward.
 
 ## Usage:
-#### NOTE: All the commands are configurable, see the `Configuration` section for information.
+#### NOTE: All the commands are configurable, see `Configuration` for more information.
 Each command has a built in search function, that can be used with the following template: `sm_xxxxxx <String To Search>`
-### Outcomes of the seatch:
+### Outcomes of the search:
 1. No match, a message will be printed in the chat and nothing will change.\
 ![No-Match](https://i.imgur.com/9L0hSuR.png)
 2. 1 Match, will automatically changed to this item.\
