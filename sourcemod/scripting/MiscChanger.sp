@@ -605,13 +605,18 @@ int MusicKitsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 	{
 		case MenuAction_Select:
 		{
+			char sMusicKitNum[4], sMusicKitDisplayName[MUSIC_KIT_MAX_NAME_LEN];
+			menu.GetItem(param2, sMusicKitNum, sizeof(sMusicKitNum), _, sMusicKitDisplayName, MUSIC_KIT_MAX_NAME_LEN);
+			
+			int iMusicKitNum = StringToInt(sMusicKitNum);
 			// Change Client Music-Kit in the scoreboard and save his prefrence.
-			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_MUSICKIT, param2))
+			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_MUSICKIT, iMusicKitNum))
 			{
-				char sMusicKitDisplayName[MUSIC_KIT_MAX_NAME_LEN];
-				menu.GetItem(g_PlayerInfo[client].iMusicKitNum, "", 0, _, sMusicKitDisplayName, MUSIC_KIT_MAX_NAME_LEN);
+				if(g_PlayerInfo[client].iMusicKitNum != iMusicKitNum)
+					eItems_GetMusicKitDisplayNameByMusicKitNum(g_PlayerInfo[client].iMusicKitNum, sMusicKitDisplayName, MUSIC_KIT_MAX_NAME_LEN);
 				
-				PrintToChat(client, "%s \x04Successfully\x01 changed your Music-Kit to \x02%s\x01!", PREFIX, sMusicKitDisplayName); // Alert him that the Music-Kit has been changed.
+				// Alert him that the Music-Kit has been changed.
+				PrintToChat(client, "%s \x04Successfully\x01 changed your Music-Kit to \x02%s\x01!", PREFIX, sMusicKitDisplayName); 
 			}
 			
 			// Reopen the menu where it was.
@@ -660,6 +665,8 @@ Menu BuildCoinsMenu(int client, const char[] sFindCoin = "", int iCoinSet = -1, 
 	char sSelection[4];
 	IntToString(iSelection, sSelection, sizeof(sSelection));
 	mCoinsMenu.AddItem(sCoinSet, iCoinSet == -1 ? sFindCoin : sSelection, ITEMDRAW_IGNORE);
+	
+	mCoinsMenu.AddItem("", "Your Default Coin", !g_PlayerInfo[client].iPinOrCoinDefIndex ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	
 	// Coin Options
 	for (int iCurrentCoin = 0; iCurrentCoin < g_iCoinsCount; iCurrentCoin++)
@@ -743,22 +750,19 @@ int CoinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 		{
 			char sCoinDefIndex[16], sCoinDisplayName[PIN_MAX_NAME_LEN];
 			menu.GetItem(param2, sCoinDefIndex, sizeof(sCoinDefIndex), _, sCoinDisplayName, PIN_MAX_NAME_LEN);
-			int iCoinDefIndex = StringToInt(sCoinDefIndex);
 			
+			int iCoinDefIndex = StringToInt(sCoinDefIndex);
 			// Change Client Coin in the scoreboard and save his prefrence.
 			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_COIN, iCoinDefIndex))
 			{
-				if(g_PlayerInfo[client].iPinOrCoinDefIndex)
+				if (g_PlayerInfo[client].iPinOrCoinDefIndex != iCoinDefIndex)
 					eItems_GetCoinDisplayNameByDefIndex(g_PlayerInfo[client].iPinOrCoinDefIndex, sCoinDisplayName, PIN_MAX_NAME_LEN);
 				
 				// Alert him that the coin has been changed.
 				PrintToChat(client, "%s \x04Successfully\x01 changed your Coin to \x02%s\x01!", PREFIX, sCoinDisplayName); 
 			}
 				
-			if(!iCoinDefIndex)
-				OpenCoinsMenu(client);
-			else
-				BuildCoinsMenu(client, iCoinSet == -1 ? sSelectionOrStringSearch : "", iCoinSet, iCoinSet == -1 ? -1 : StringToInt(sSelectionOrStringSearch)).DisplayAt(client, menu.Selection, MENU_TIME_FOREVER);
+			BuildCoinsMenu(client, iCoinSet == -1 ? sSelectionOrStringSearch : "", iCoinSet, iCoinSet == -1 ? -1 : StringToInt(sSelectionOrStringSearch)).DisplayAt(client, menu.Selection, MENU_TIME_FOREVER);
 			
 		}
 		case MenuAction_End:
@@ -835,12 +839,12 @@ int PinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 		{
 			char sPinDefIndex[16], sPinDisplayName[PIN_MAX_NAME_LEN];
 			menu.GetItem(param2, sPinDefIndex, sizeof(sPinDefIndex), _, sPinDisplayName, PIN_MAX_NAME_LEN);
-			int iPinDefIndex = StringToInt(sPinDefIndex);
 			
+			int iPinDefIndex = StringToInt(sPinDefIndex);
 			// Change Client Pin in the scoreboard and save his prefrence.
 			if(g_PlayerInfo[client].SaveAndApplyItem(client, MCITEM_PIN, iPinDefIndex))
 			{
-				if(g_PlayerInfo[client].iPinOrCoinDefIndex)
+				if(g_PlayerInfo[client].iPinOrCoinDefIndex != iPinDefIndex)
 					eItems_GetPinDisplayNameByDefIndex(g_PlayerInfo[client].iPinOrCoinDefIndex, sPinDisplayName, PIN_MAX_NAME_LEN);
 				
 				PrintToChat(client, "%s \x04Successfully\x01 changed your Pin to \x02%s\x01!", PREFIX, sPinDisplayName); // Alert him that the Pin has been changed.
