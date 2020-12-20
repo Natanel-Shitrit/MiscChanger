@@ -21,6 +21,10 @@ GlobalForward g_fOnItemChangedPostForward;	// Not Blockable
 // SDK Handles
 Handle g_hSetRank;
 
+// Offsets
+int g_ResetMusicKitFromInventoryOffset;
+int g_ResetCoinFromInventoryOffset;
+
 // Medal Categories
 // https://github.com/perilouswithadollarsign/cstrike15_src/blob/29e4c1fda9698d5cebcdaf1a0de4b829fa149bf8/game/shared/cstrike15/cs_player_rank_shared.h
 enum MedalCategory_t
@@ -36,13 +40,6 @@ enum MedalCategory_t
 	MEDAL_CATEGORY_SEASON_COIN = MEDAL_CATEGORY_ACHIEVEMENTS_END, 
 	MEDAL_CATEGORY_COUNT, 
 }
-
-// ArrayList Sizes
-int g_iMusicKitsCount;
-int g_iCoinsSetsCount;
-int g_iCoinsCount;
-int g_iPinsCount;
-
 // ArrayLists
 ArrayList g_alMusicKitsNames;
 ArrayList g_alCoinsSetsNames;
@@ -72,9 +69,6 @@ enum struct PlayerInfo
 {
 	bool bFoundDefaults;
 	
-	int iOwnMusicKitNum;
-	int iOwnPinOrCoin;
-	
 	int iMusicKitNum;
 	int iPinOrCoinDefIndex;
 	int iAccountID;
@@ -82,8 +76,6 @@ enum struct PlayerInfo
 	void Reset()
 	{
 		this.bFoundDefaults = false;
-		this.iOwnMusicKitNum = 0;
-		this.iOwnPinOrCoin = 0;
 		this.iMusicKitNum = 0;
 		this.iPinOrCoinDefIndex = 0;
 		this.iAccountID = 0;
@@ -117,7 +109,14 @@ enum struct PlayerInfo
 				case MCITEM_MUSICKIT:
 				{
 					// Change in-game | 0 = Player default item
-					SetEntProp(client, Prop_Send, "m_unMusicID", (!newvalue) ? this.iOwnMusicKitNum : newvalue);
+					if (newvalue)
+					{
+						SetEntProp(client, Prop_Send, "m_unMusicID", newvalue);
+					}
+					else
+					{
+						SetEntData(client, g_ResetMusicKitFromInventoryOffset, 1, 1);
+					}
 					
 					// Change global variable
 					this.iMusicKitNum = newvalue;
@@ -126,14 +125,22 @@ enum struct PlayerInfo
 				case MCITEM_PIN, MCITEM_COIN, MCITEM_COIN_OR_PIN:
 				{
 					// Change in-game | 0 = Player default item
-					SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, (!newvalue) ? this.iOwnPinOrCoin : newvalue);
+					if (newvalue)
+					{
+						SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, newvalue);
+					}
+					else
+					{
+						SetEntData(client, g_ResetCoinFromInventoryOffset, 1, 1);
+					}
+					
 					
 					// Change global variable
 					this.iPinOrCoinDefIndex = newvalue;
 					
 					CEconItemDefinition newItemDef;
 		
-					if(!isFirstLoad && g_bShowEconPreview && (newItemDef = PTaH_GetItemDefinitionByDefIndex((!newvalue) ? this.iOwnPinOrCoin : newvalue)))
+					if(!isFirstLoad && g_bShowEconPreview && newvalue && (newItemDef = PTaH_GetItemDefinitionByDefIndex(newvalue)))
 						PrintHintItemEconImage(client, newItemDef);
 				}
 			}
@@ -214,7 +221,6 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	// Natives
 	CreateNative("MiscChanger_GetClientItem", Native_GetClientItem);
 	CreateNative("MiscChanger_SetClientItem", Native_SetClientItem);
-	CreateNative("MiscChanger_GetClientItemDefault", Native_GetClientItemDefault);
 	
 	// Forwards
 	g_fOnItemChangedPreForward = new GlobalForward("MiscChanger_OnItemChangedPre", ET_Hook, Param_Cell, Param_Cell, Param_Cell, Param_CellByRef, Param_Cell);
@@ -228,37 +234,20 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 // eItems has been loaded AFTER our plugin.
 public void eItems_OnItemsSynced()
 {
-	g_iMusicKitsCount = eItems_GetMusicKitsCount();
-	g_iCoinsSetsCount = eItems_GetCoinsSetsCount();
-	g_iCoinsCount = eItems_GetCoinsCount();
-	g_iPinsCount = eItems_GetPinsCount();
-	
-	RequestFrame(Frame_ItemsSync);
-}
-
-// Load all of the data we need
-public void Frame_ItemsSync(any data)
-{
-	// Load Music-Kits
-	// VALVE Music-Kits
+	//==================================[ Music-Kits ]==================================//
 	g_alMusicKitsNames.PushString("VALVE Music-Kit 1 (Game Default)");
 	g_alMusicKitsNames.PushString("VALVE Music-Kit 2 (Pre-Panorama T Default)");
-	
 	// Community Music-Kits
-	for (int iCurrentMusicKit = 0; iCurrentMusicKit < g_iMusicKitsCount; iCurrentMusicKit++)
+	for (int iCurrentMusicKit = 0; iCurrentMusicKit < eItems_GetMusicKitsCount(); iCurrentMusicKit++)
 	{
 		char sCurrentMusicKitName[MUSIC_KIT_MAX_NAME_LEN];
-		if (!eItems_GetMusicKitDisplayNameByMusicKitNum(iCurrentMusicKit, sCurrentMusicKitName, sizeof(sCurrentMusicKitName)))
-		{
-			LogError("Failed to load Music-Kit #%d Display Name, Skipping", iCurrentMusicKit);
-			continue;
-		}
+		eItems_GetMusicKitDisplayNameByDefIndex(iCurrentMusicKit + 3, sCurrentMusicKitName, MUSIC_KIT_MAX_NAME_LEN);
 		
 		g_alMusicKitsNames.PushString(sCurrentMusicKitName);
 	}
 	
-	// Load Coins Sets
-	for (int iCurrentCoinSet = 0; iCurrentCoinSet < g_iCoinsSetsCount; iCurrentCoinSet++)
+	//==================================[ Coin-Sets ]===================================//
+	for (int iCurrentCoinSet = 0; iCurrentCoinSet < eItems_GetCoinsSetsCount(); iCurrentCoinSet++)
 	{
 		char sCurrentCoinSetName[COIN_SET_MAX_NAME_LEN];
 		if (!eItems_GetCoinSetDisplayNameByCoinSetNum(iCurrentCoinSet, sCurrentCoinSetName, COIN_SET_MAX_NAME_LEN))
@@ -269,9 +258,10 @@ public void Frame_ItemsSync(any data)
 		
 		g_alCoinsSetsNames.PushString(sCurrentCoinSetName);
 	}
+	g_mCoinsSetsMenu = BuildCoinsSetsMenu();
 	
-	// Load Coins
-	for (int iCurrentCoin = 0; iCurrentCoin < g_iCoinsCount; iCurrentCoin++)
+	//====================================[ Coins ]=====================================//
+	for (int iCurrentCoin = 0; iCurrentCoin < eItems_GetCoinsCount(); iCurrentCoin++)
 	{
 		Coin currentCoin;
 		
@@ -286,8 +276,8 @@ public void Frame_ItemsSync(any data)
 		g_alCoins.PushArray(currentCoin, sizeof(currentCoin));
 	}
 	
-	// Load Pins
-	for (int iCurrentPin = 0; iCurrentPin < g_iPinsCount; iCurrentPin++)
+	//====================================[ Pins ]======================================//
+	for (int iCurrentPin = 0; iCurrentPin < eItems_GetPinsCount(); iCurrentPin++)
 	{
 		Pin currentPin;
 		
@@ -302,8 +292,6 @@ public void Frame_ItemsSync(any data)
 		g_alPins.PushArray(currentPin, sizeof(currentPin));
 	}
 	
-	// Build Coins-Sets Menu
-	g_mCoinsSetsMenu = BuildCoinsSetsMenu();
 }
 
 // Load Config
@@ -354,10 +342,6 @@ void OnPlayerTeamChange(Event event, const char[] name, bool dontBroadcast)
 // 2. Get the prefrences from the database.
 void ProcessPlayerData(int client)
 {
-	// Player default items.
-	g_PlayerInfo[client].iOwnPinOrCoin = GetClientActivePinOrCoin(PTaH_GetPlayerInventory(client));
-	g_PlayerInfo[client].iOwnMusicKitNum = GetEntProp(client, Prop_Send, "m_unMusicID");
-	
 	// We found the default values.
 	g_PlayerInfo[client].bFoundDefaults = true;
 	
@@ -556,7 +540,7 @@ Menu BuildMusicKitsMenu(const char[] sFindMusicKit = "", int client)
 	mMusicKitsMenu.AddItem(sFindMusicKit, "Your Default Music-Kit", !g_PlayerInfo[client].iMusicKitNum ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	
 	// Music-Kits Options
-	for (int iCurrentMusicKit = 0; iCurrentMusicKit < g_iMusicKitsCount + 2; iCurrentMusicKit++) // + 2 Because we added 2 kits from VALVE
+	for (int iCurrentMusicKit = 0; iCurrentMusicKit < g_alMusicKitsNames.Length; iCurrentMusicKit++) // + 2 Because we added 2 kits from VALVE
 	{
 		char sMusicKitName[MUSIC_KIT_MAX_NAME_LEN];
 		g_alMusicKitsNames.GetString(iCurrentMusicKit, sMusicKitName, sizeof(sMusicKitName));
@@ -642,7 +626,7 @@ Menu BuildCoinsSetsMenu()
 	mCoinsSetsMenu.AddItem("", "Your Default Coin");
 	
 	// Coin Options
-	for (int iCurrentCoinSet = 0; iCurrentCoinSet < g_iCoinsSetsCount; iCurrentCoinSet++)
+	for (int iCurrentCoinSet = 0; iCurrentCoinSet < g_alCoinsSetsNames.Length; iCurrentCoinSet++)
 	{
 		char sCoinSetName[COIN_SET_MAX_NAME_LEN];
 		g_alCoinsSetsNames.GetString(iCurrentCoinSet, sCoinSetName, sizeof(sCoinSetName));
@@ -669,7 +653,7 @@ Menu BuildCoinsMenu(int client, const char[] sFindCoin = "", int iCoinSet = -1, 
 	mCoinsMenu.AddItem("", "Your Default Coin", !g_PlayerInfo[client].iPinOrCoinDefIndex ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	
 	// Coin Options
-	for (int iCurrentCoin = 0; iCurrentCoin < g_iCoinsCount; iCurrentCoin++)
+	for (int iCurrentCoin = 0; iCurrentCoin < g_alCoins.Length; iCurrentCoin++)
 	{
 		// "because SourcePawn" ~ asherkin 2020
 		// https://discordapp.com/channels/335290997317697536/335290997317697536/759064525244072006
@@ -787,7 +771,7 @@ Menu BuildPinsMenu(const char[] sFindPin = "", int client)
 	mPinsMenu.AddItem(sFindPin, "Your Default Pin", !g_PlayerInfo[client].iPinOrCoinDefIndex ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	
 	// Pin Options
-	for (int iCurrentPin = 0; iCurrentPin < g_iPinsCount; iCurrentPin++)
+	for (int iCurrentPin = 0; iCurrentPin < g_alPins.Length; iCurrentPin++)
 	{
 		// "because SourcePawn" ~ asherkin 2020
 		// https://discordapp.com/channels/335290997317697536/335290997317697536/759064525244072006
@@ -896,21 +880,6 @@ int Native_SetClientItem(Handle plugin, int numParams)
 	g_PlayerInfo[client].SaveAndApplyItem(client, item, value);
 }
 
-int Native_GetClientItemDefault(Handle plugin, int numParams)
-{
-	int client = GetNativeCell(1); 
-	
-	if(!(0 < client <= MaxClients) || !IsClientInGame(client))
-		ThrowNativeError(0, "Invalid client.");
-	
-	MCItem item = GetNativeCell(2);
-	
-	if(!(MCITEM_START < item < MCITEM_END))
-		ThrowNativeError(1, "Invalid Item.");
-	
-	return item == MCITEM_MUSICKIT ? g_PlayerInfo[client].iOwnMusicKitNum : g_PlayerInfo[client].iOwnPinOrCoin;
-}
-
 /**********************
 		Helpers
 ***********************/
@@ -935,6 +904,12 @@ void LoadGameData()
 	if (!(g_hSetRank = EndPrepSDKCall()))
 		SetFailState("Failed to get CCSPlayer::SetRank signature");
 	
+	int m_unMusicID = FindSendPropInfo("CCSPlayer", "m_unMusicID");
+	
+	g_ResetMusicKitFromInventoryOffset = m_unMusicID + hGameData.GetOffset("ResetMusicKitFromInventory");
+	g_ResetCoinFromInventoryOffset = m_unMusicID + hGameData.GetOffset("ResetCoinFromInventory");
+	
+	PrintToChatAll("Offset: %d", g_ResetCoinFromInventoryOffset);
 	delete hGameData;
 }
 
@@ -1003,28 +978,6 @@ any[] GetCoinByIndex(int index)
 	g_alCoins.GetArray(index, coin, sizeof(coin));
 	
 	return coin;
-}
-
-int GetClientActivePinOrCoin(CCSPlayerInventory pInventory)
-{
-	if(!pInventory)
-		return 0;
-	
-	// Get Item View.
-	CEconItemView currentItemView = pInventory.GetItemInLoadout(0, LOADOUT_POSITION_FLAIR0);
-		
-	// Validate Item View.
-	if(!currentItemView)
-		return 0;
-		
-	// Get Item Definition.
-	CEconItemDefinition currentItemDef = currentItemView.GetItemDefinition();
-	
-	// Validate Item Definition.
-	if(!currentItemDef)
-		return 0;
-	
-	return currentItemDef.GetDefinitionIndex();
 }
 
 void PrintHintItemEconImage(int client, CEconItemDefinition itemDef, bool isFirstRun = true)
