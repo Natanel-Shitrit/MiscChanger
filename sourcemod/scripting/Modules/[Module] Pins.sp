@@ -52,10 +52,10 @@ void LoadPins()
 	g_Pins = new ArrayList(sizeof(ItemData));
 	
 	ItemData current_item;
-	for (int current_coin = 0; current_coin < eItems_GetPinsCount(); current_coin++)
+	for (int current_pin = 0; current_pin < eItems_GetPinsCount(); current_pin++)
 	{
-		IntToString(eItems_GetPinDefIndexByPinNum(current_coin), current_item.value, sizeof(ItemData::value));
-		eItems_GetPinDisplayNameByPinNum(current_coin, current_item.name, sizeof(ItemData::name));
+		IntToString(eItems_GetPinDefIndexByPinNum(current_pin), current_item.value, sizeof(ItemData::value));
+		eItems_GetPinDisplayNameByPinNum(current_pin, current_item.name, sizeof(ItemData::name));
 		
 		g_Pins.PushArray(current_item);
 	}
@@ -82,7 +82,7 @@ void LoadGameData()
 		SetFailState("'sourcemod/gamedata/misc.game.csgo.txt' is missing!");
 	
 	// https://github.com/perilouswithadollarsign/cstrike15_src/blob/29e4c1fda9698d5cebcdaf1a0de4b829fa149bf8/game/server/cstrike15/cs_player.cpp#L16369-L16372
-	// Changes the the rank of the player ( this case use is the coin )
+	// Changes the the rank of the player ( this case use is the pin )
 	// void CCSPlayer::SetRank( MedalCategory_t category, MedalRank_t rank )
 	StartPrepSDKCall(SDKCall_Player);
 	
