@@ -91,6 +91,8 @@ enum struct pData
 	void Reset()
 	{
 		this.account_id = 0;
+		this.choosing_item = 0;
+		this.search_str = "";
 		delete this.item_values;
 	}
 	
@@ -195,6 +197,9 @@ public void OnPluginStart()
 	// NOTE: Items will be added to the menu dynamically, probably in the register item native.
 	BuildMainMenu();
 	
+	// Load Config
+	LoadConfig();
+	
 	// Create the items Array-List.
 	g_Items = new ArrayList(sizeof(Item));
 	
@@ -242,21 +247,7 @@ public void OnPluginEnd()
 // The config is loaded each map change.
 public void OnMapStart()
 {
-	// delete old config from previos map.
-	delete g_Config;
-	
-	// Load KeyValues Config
-	g_Config = new KeyValues("MiscChanger");
-	
-	// Find the Config
-	char sFilePath[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, sFilePath, sizeof(sFilePath), CORE_CONFIG_PATH);
-	
-	// Open file and go directly to the settings, if something doesn't work don't continue.
-	if (!g_Config.ImportFromFile(sFilePath))
-	{
-		SetFailState("%s Couldn't load plugin config.", PREFIX_NO_COLOR);
-	}
+	LoadConfig();
 	
 	Item item;
 	if (!RegItemCommands("MainMenu", Command_MainMenu, "Opens the Main-Menu", item))
@@ -414,6 +405,11 @@ public void OnClientAuthorized(int client, const char[] auth)
 	}
 }
 
+public void OnClientDisconnect(int client)
+{
+	g_ClientData[client].Reset();
+}
+
 /**********************
 		Natives
 ***********************/
@@ -565,6 +561,25 @@ any[] GetClientItem(int client, int index)
 /**********************
 		Helpers
 ***********************/
+void LoadConfig()
+{
+	// delete old config from previos map.
+	delete g_Config;
+	
+	// Load KeyValues Config
+	g_Config = new KeyValues("MiscChanger");
+	
+	// Find the Config
+	char sFilePath[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, sFilePath, sizeof(sFilePath), CORE_CONFIG_PATH);
+	
+	// Open file and go directly to the settings, if something doesn't work don't continue.
+	if (!g_Config.ImportFromFile(sFilePath))
+	{
+		SetFailState("%s Couldn't load plugin config.", PREFIX_NO_COLOR);
+	}
+}
+
 bool RegItemCommands(const char[] section, ConCmd command_func, const char[] desc, Item item)
 {
 	// Go back to the top.
