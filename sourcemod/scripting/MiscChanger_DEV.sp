@@ -34,8 +34,11 @@ enum struct Item
 	// The name of the item.
 	char name[MAX_ITEM_NAME_LENGTH];
 	
-	// ArrayList of ItemData.
-	ArrayList values;
+	// ArrayList of category names.
+	ArrayList categories;
+	
+	// ArrayList of items.
+	ArrayList items;
 	
 	// ArrayList of the item commands.
 	ArrayList commands;
@@ -53,6 +56,19 @@ enum struct Item
 		Call_PushString(new_value);
 		Call_Finish();
 	}
+	
+	void GetItemDisplayName(int item_index, char[] buffer)
+	{
+		ItemData item_data;
+		this.items.GetArray(item_index, item_data, sizeof(item_data));
+		
+		strcopy(buffer, MAX_ITEM_NAME_LENGTH, item_data.name);
+	}
+	
+	void GetCategoryName(int index, char[] buffer)
+	{
+		this.categories.GetString(index, buffer, MAX_ITEM_NAME_LENGTH);
+	}
 }
 ArrayList g_Items;
 
@@ -64,6 +80,9 @@ enum struct pData
 	// The item the client is currently choosing.
 	int choosing_item;
 	
+	// The category the player is in.
+	int current_category;
+	
 	// string the client is searching
 	char search_str[MAX_ITEM_NAME_LENGTH];
 	
@@ -73,6 +92,8 @@ enum struct pData
 	
 	void Init(int client)
 	{
+		this.Reset();
+		
 		// Set client account id.
 		this.account_id = GetSteamAccountID(client);
 		
@@ -92,16 +113,19 @@ enum struct pData
 	{
 		this.account_id = 0;
 		this.choosing_item = 0;
+		this.current_category = -1;
 		this.search_str = "";
+	}
+	
+	void Close()
+	{
+		this.Reset();
 		delete this.item_values;
 	}
 	
-	void GetItemValue(int item_index, char[] buffer, int size)
+	void GetItemValue(int item_index, char[] buffer)
 	{
-		if (this.item_values)
-		{
-			this.item_values.GetString(item_index, buffer, size);
-		}
+		this.item_values.GetString(item_index, buffer, MAX_ITEM_VALUE_LENGTH);
 	}
 	
 	void SetItemValue(int item_index, const char[] new_value)
@@ -272,17 +296,25 @@ public Action Command_MainMenu(int client, int argc)
 
 public Action Command_OpenItemMenu(int client, int argc)
 {
-	GetCmdArgString(g_ClientData[client].search_str, sizeof(pData::search_str));
+	g_ClientData[client].Reset();
 	
 	char command[MAX_ITEM_COMMAND_LENGTH];
 	GetCmdArg(0, command, MAX_ITEM_COMMAND_LENGTH);
 	
-	int index = FindItemOfCommand(command);
-	
-	if (index != -1)
+	if ((g_ClientData[client].choosing_item = FindItemOfCommand(command)) != -1)
 	{
-		ShowItemMenu(client, index);
+		GetCmdArgString(g_ClientData[client].search_str, sizeof(pData::search_str));
+		if (g_ClientData[client].search_str[0])
+		{
+			ShowItemMenu(client);
+		}
+		else
+		{
+			ShowItemCategoriesMenu(client);
+		}
 	}
+	
+	return Plugin_Handled;
 }
 
 /********************
@@ -291,44 +323,143 @@ public Action Command_OpenItemMenu(int client, int argc)
 
 void BuildMainMenu()
 {
-	g_MainMenu = new Menu(MainMenuHandler, MenuAction_Select);
+	g_MainMenu = new Menu(MainMenuHandler, MenuAction_Select | MenuAction_DisplayItem);
 	
 	//g_MainMenu.SetTitle("%T", "Main Menu Title", LANG_SERVER);
 	g_MainMenu.SetTitle("%s Choose an item:", PREFIX_NO_COLOR);
 }
 
-int MainMenuHandler(Menu menu, MenuAction action, int client, int item)
+int MainMenuHandler(Menu menu, MenuAction action, int client, int item_index)
 {
-	if (action == MenuAction_Select)
+	switch (action)
 	{
-		g_ClientData[client].search_str = "";
-		ShowItemMenu(client, item);
+		case MenuAction_Select:
+		{
+			g_ClientData[client].Reset();
+			
+			g_ClientData[client].choosing_item = item_index;
+			
+			ShowItemCategoriesMenu(client);
+		}
+		
+		case MenuAction_DisplayItem:
+		{
+			// Original Message
+			char menu_item[MAX_ITEM_NAME_LENGTH];
+			menu.GetItem(item_index, "", 0, _, menu_item, MAX_ITEM_NAME_LENGTH);
+			
+			// Get client current item value:
+			char client_current_item_value[MAX_ITEM_VALUE_LENGTH];
+			g_ClientData[client].GetItemValue(item_index, client_current_item_value);
+			
+			// Get client current item name with the value:
+			char item_menu_with_client_value[MAX_ITEM_NAME_LENGTH * 2];
+			Item item; g_Items.GetArray(item_index, item, sizeof(item));
+			
+			ItemData current_item_data;
+			for (int current_item = 0; current_item < item.items.Length; current_item++)
+			{
+				item.items.GetArray(current_item, current_item_data, sizeof(current_item_data));
+				if (StrEqual(client_current_item_value, current_item_data.value))
+				{
+					strcopy(item_menu_with_client_value, MAX_ITEM_NAME_LENGTH, current_item_data.name);
+					break;
+				}
+			}
+			
+			// Format them together:
+			Format(item_menu_with_client_value, sizeof(item_menu_with_client_value), "%s \n  > Current: %s", menu_item, item_menu_with_client_value);
+			
+			return RedrawMenuItem(item_menu_with_client_value);
+		}
 	}
+	
+	return 0;
 }
 
-void ShowItemMenu(int client, int item_index, int start_at = 0)
+void ShowItemCategoriesMenu(int client, int start_at = 0)
 {
 	// Validate item index - must be in this range:
-	if (!(0 <= item_index < g_Items.Length))
+	if (!(0 <= g_ClientData[client].choosing_item < g_Items.Length))
 	{
 		return;
 	}
 	
-	g_ClientData[client].choosing_item = item_index;
+	Item item; item = GetItemByIndex(g_ClientData[client].choosing_item);
 	
-	Menu item_menu = new Menu(ItemMenuHandler, MenuAction_Select | MenuAction_Cancel | MenuAction_End);
+	if (!item.categories || item.categories.Length == 1)
+	{
+		ShowItemMenu(client);
+	}
+	else
+	{
+		Menu item_categories_menu = new Menu(ItemCategoriesMenuHandler, MenuAction_Select | MenuAction_Cancel | MenuAction_End);
+		item_categories_menu.SetTitle("%s Choose A %s Category:", PREFIX_NO_COLOR, item.name); //g_MainMenu.SetTitle("%T", "Main Menu Title", LANG_SERVER);
 	
-	Item item; item = GetItemByIndex(item_index);
-	item_menu.SetTitle("%s Choose A %s:", PREFIX_NO_COLOR, item.name); //g_MainMenu.SetTitle("%T", "Main Menu Title", LANG_SERVER);
+		char current_category_name[MAX_ITEM_NAME_LENGTH];
+		for (int current_category = 0; current_category < item.categories.Length; current_category++)
+		{
+			item.categories.GetString(current_category, current_category_name, MAX_ITEM_NAME_LENGTH);
+			item_categories_menu.AddItem("", current_category_name);
+		}
+		
+		item_categories_menu.DisplayAt(client, start_at, MENU_TIME_FOREVER);
+	}
+}
+
+int ItemCategoriesMenuHandler(Menu menu, MenuAction action, int param1, int param2)
+{
+	switch (action)
+	{
+		case MenuAction_Select:
+		{
+			int client = param1, category_num = param2;
+			
+			g_ClientData[client].current_category = category_num;
+			
+			ShowItemMenu(client);
+		}
+		
+		case MenuAction_Cancel:
+		{
+			int client = param1;
+			g_MainMenu.Display(client, MENU_TIME_FOREVER);
+		}
+		
+		case MenuAction_End:
+		{
+			delete menu;
+		}
+	}
+}
+
+void ShowItemMenu(int client, int start_at = 0)
+{
+	// Get Variables
+	Item item; item = GetItemByIndex(g_ClientData[client].choosing_item);
 	
 	char client_item_value[MAX_ITEM_VALUE_LENGTH];
-	g_ClientData[client].GetItemValue(item_index, client_item_value, MAX_ITEM_VALUE_LENGTH);
+	g_ClientData[client].GetItemValue(g_ClientData[client].choosing_item, client_item_value);
+	
+	// Create Menu
+	Menu item_menu = new Menu(ItemMenuHandler, MenuAction_Select | MenuAction_Cancel | MenuAction_End);
+	if (g_ClientData[client].current_category != -1)
+	{
+		char category_name[MAX_ITEM_NAME_LENGTH];
+		item.GetCategoryName(g_ClientData[client].current_category, category_name);
+		item_menu.SetTitle("%s Choose A %s From %s:", PREFIX_NO_COLOR, item.name, category_name); //g_MainMenu.SetTitle("%T", "Main Menu Title", LANG_SERVER);
+	}
+	else
+	{
+		item_menu.SetTitle("%s Choose A %s:", PREFIX_NO_COLOR, item.name);
+	}
 	
 	ItemData current_item_data;
-	for (int current_item = 0; current_item < item.values.Length; current_item++)
+	for (int current_item = 0; current_item < item.items.Length; current_item++)
 	{
-		item.values.GetArray(current_item, current_item_data, sizeof(current_item_data));
-		if (!current_item || (!g_ClientData[client].search_str[0] || StrContains(current_item_data.name, g_ClientData[client].search_str, false) != -1))
+		item.items.GetArray(current_item, current_item_data, sizeof(current_item_data));
+		if (!current_item || ((g_ClientData[client].current_category == -1 || g_ClientData[client].current_category == current_item_data.category_index) &&
+							 (!g_ClientData[client].search_str[0] || StrContains(current_item_data.name, g_ClientData[client].search_str, false) != -1)))
 		{
 			item_menu.AddItem(current_item_data.value, current_item_data.name, StrEqual(client_item_value, current_item_data.value) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 		}
@@ -377,14 +508,21 @@ int ItemMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			// Show Menu again.
 			if (menu.ItemCount > 2)
 			{
-				ShowItemMenu(client, g_ClientData[client].choosing_item, menu.Selection);
+				ShowItemMenu(client, menu.Selection);
 			}
 		}
 		
 		case MenuAction_Cancel:
 		{
 			int client = param1;
-			g_MainMenu.Display(client, MENU_TIME_FOREVER);
+			if (g_ClientData[client].current_category != -1)
+			{
+				ShowItemCategoriesMenu(client, (g_ClientData[client].current_category / 6) * 6);
+			}
+			else
+			{
+				g_MainMenu.Display(client, MENU_TIME_FOREVER);
+			}
 		}
 		
 		case MenuAction_End:
@@ -407,7 +545,7 @@ public void OnClientAuthorized(int client, const char[] auth)
 
 public void OnClientDisconnect(int client)
 {
-	g_ClientData[client].Reset();
+	g_ClientData[client].Close();
 }
 
 /**********************
@@ -467,15 +605,22 @@ int Native_RegisterItem(Handle plugin, int numParams)
 	new_item.apply_item = GetNativeFunction(REGISTER_PARAM_APPLY_ITEM);
 	
 	// Get the item values:
-	new_item.values = view_as<ArrayList>(CloneHandle(view_as<Handle>(GetNativeCell(REGISTER_PARAM_ITEM_VALUES))));
+	Handle categories = GetNativeCell(REGISTER_PARAM_ITEM_CATEGORIES);
+	if (categories)
+	{
+		new_item.categories = view_as<ArrayList>(CloneHandle(categories));
+	}
+	
+	// Get the item values:
+	new_item.items = view_as<ArrayList>(CloneHandle(view_as<Handle>(GetNativeCell(REGISTER_PARAM_ITEM_VALUES))));
 	
 	// Free first position for the default item.
-	new_item.values.ShiftUp(0);
+	new_item.items.ShiftUp(0);
 	
 	// Add 'Default Item'.
 	ItemData default_item;
 	Format(default_item.name, MAX_ITEM_NAME_LENGTH, "Default %s", new_item.name);
-	new_item.values.SetArray(0, default_item, sizeof(default_item));
+	new_item.items.SetArray(0, default_item, sizeof(default_item));
 	
 	// Add to Main-Menu.
 	g_MainMenu.AddItem("", new_item.name);

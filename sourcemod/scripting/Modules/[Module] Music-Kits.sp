@@ -30,7 +30,7 @@ public void MiscChanger_OnCoreReady()
 			LoadMusicKits();
 		}
 		
-		MiscChanger_RegisterItem(MODULE_NAME, g_MusicKits, ApplyMusicKit);
+		MiscChanger_RegisterItem(MODULE_NAME, null, g_MusicKits, ApplyMusicKit);
 	}
 }
 

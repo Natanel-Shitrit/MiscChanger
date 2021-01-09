@@ -33,7 +33,7 @@ public void MiscChanger_OnCoreReady()
 			LoadPins();
 		}
 		
-		MiscChanger_RegisterItem(MODULE_NAME, g_Pins, ApplyPin);
+		MiscChanger_RegisterItem(MODULE_NAME, null, g_Pins, ApplyPin);
 	}
 }
 

@@ -9,15 +9,21 @@
 
 enum struct ItemData
 {
+	// Display Name of the item.
 	char name[MAX_ITEM_NAME_LENGTH];
+	
+	// Value of the item to apply on use.
 	char value[MAX_ITEM_VALUE_LENGTH];
+	
+	// Index of the category the item belongs to.
+	int category_index;
 }
 
 // MiscChanger_RegisterItem
 enum
 {
 	REGISTER_PARAM_ITEM_NAME = 1,
-	//REGISTER_PARAM_ITEM_COMMAND,
+	REGISTER_PARAM_ITEM_CATEGORIES,
 	REGISTER_PARAM_ITEM_VALUES,
 	REGISTER_PARAM_APPLY_ITEM
 }
@@ -51,15 +57,15 @@ native bool MiscChanger_IsCoreReady();
  * Registers an item in the core plugin.
  *
  * @param name				The name of the item that will show in the main menu. (Will be added even if short name already exists)
- * @param category			A command to execute when the client clicks on the item in the main menu.
- * @param values			ArrayList of the item values.
+ * @param categories		ArrayList of the categories of the item. (pass null for no categories)
+ * @param items				ArrayList of the items.
  * @param apply_item		A function to use to apply the value.
  *
  * @note					apply_item must be public and with the following signature: (int client, char[] new_value)
  *
  * @return					index of the item in the Items ArrayList.
  */
-native int MiscChanger_RegisterItem(const char[] name, ArrayList values, Function apply_item);
+native int MiscChanger_RegisterItem(const char[] name, ArrayList categories, ArrayList values, Function apply_item);
 
 /**
  * Changes the value of a specific item for a client.
