@@ -8,7 +8,6 @@
 #define PREFIX " \x04"... PREFIX_NO_COLOR ..."\x01"
 #define CORE_CONFIG_PATH "configs/MiscChanger/misc_changer.cfg"
 
-
 // Is Core Ready
 bool g_IsReady;
 
@@ -21,10 +20,6 @@ KeyValues g_Config;
 // API	-------	Core
 GlobalForward 	g_OnCoreReady, 
 				g_OnCoreUnloaded, 
-				
-				// ItemDefinition
-				//g_OnItemChangedForward,
-				//g_OnItemChangedMessageForward,
 				
 				// pData
 				g_OnClientItemValueChange;
@@ -199,19 +194,16 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	// [✓] TODO: [Core] Check if the core plugin is ready.
 	CreateNative("MiscChanger_IsCoreReady", Native_IsCoreReady);
 	
-	// [✓] TODO: [ItemDefinition] Registering an item to the system.
+	// [✓] TODO: [Item] Registering an item to the system.
 	CreateNative("MiscChanger_RegisterItem", Native_RegisterItem);
 	
-	// [✗] TODO: [ItemDefinition] Removes an item from the system.
+	// [✗] TODO: [Item] Removes an item from the system.
 	CreateNative("MiscChanger_RemoveItem", Native_RemoveItem);
 	
-	// [X] TODO: [ItemDefinition] Sets the global item default value.
-	//CreateNative("MiscChanger_SetItemDefaultValue", Native_GetClientItemDefault);
+	// [✓] TODO: [pData] Gets a client item value.
+	CreateNative("MiscChanger_GetClientItemValue", Native_GetClientItemValue);
 	
-	// [✗] TODO: [pData Item] Gets a client item value.
-	//CreateNative("MiscChanger_GetClientItemValue", Native_GetClientItemValue);
-	
-	// [✗] TODO: [pData Item] Sets a client item value.
+	// [✓] TODO: [pData] Sets a client item value.
 	CreateNative("MiscChanger_SetClientItemValue", Native_SetClientItemValue);
 	
 	//=================================[ FORWARDS ]=================================//
@@ -228,7 +220,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	// [✗] TODO: [ItemDefinition] When a item is beening removed.
 	//g_OnItemRemove = new GlobalForward("MiscChanger_OnItemRemove", ET_Hook, Param_Cell, Param_String);
 	
-	// [✗] TODO: [pData Item] When a item value has been changed.
+	// [✓] TODO: [pData Item] When a item value has been changed.
 	g_OnClientItemValueChange = new GlobalForward("MiscChanger_OnItemValueChange", ET_Hook, Param_Cell, Param_Cell, Param_String, Param_String, Param_Cell);
 	
 	RegPluginLibrary("MiscChanger");
@@ -678,22 +670,102 @@ int Native_RemoveItem(Handle plugin, int numParams)
 	/* TODO: Complete */
 }
 
+int Native_GetClientItemValue(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(GET_ITEM_PARAM_CLIENT);
+	
+	if (!(0 < client <= MaxClients))
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Invalid client index.");
+		return;
+	}
+	
+	if (!IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Client not in-game.");
+		return;
+	}
+	
+	int item_index = GetNativeCell(GET_ITEM_PARAM_ITEM);
+	
+	if (!(0 < item_index < g_Items.Length))
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Invalid item index.");
+		return;
+	}
+	
+	int buffer_length;
+	if (GetNativeStringLength(GET_ITEM_PARAM_BUFFER, buffer_length) != SP_ERROR_NONE)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Failed to get buffer length.");
+		return;
+	}
+	
+	if (buffer_length != MAX_ITEM_VALUE_LENGTH)
+	{
+		ThrowNativeError(SP_ERROR_PARAM, "Buffer length is not MAX_ITEM_VALUE_LENGTH.");
+		return;
+	}
+	
+	char client_item_value[MAX_ITEM_VALUE_LENGTH];
+	g_ClientData.GetItemValue(client, item_index, client_item_value);
+	
+	int error;
+	if ((error = SetNativeString(GET_ITEM_PARAM_BUFFER, client_item_value, MAX_ITEM_VALUE_LENGTH)) != SP_ERROR_NONE)
+	{
+		ThrowNativeError(error, "Error while saving value to buffer - Error: %d", error);
+	}
+}
+
 int Native_SetClientItemValue(Handle plugin, int numParams)
 {
-	/* TODO: Complete */
+	int client = GetNativeCell(GET_ITEM_PARAM_CLIENT);
+	
+	if (!(0 < client <= MaxClients))
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Invalid client index.");
+		return;
+	}
+	
+	if (!IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Client not in-game.");
+		return;
+	}
+	
+	int item_index = GetNativeCell(GET_ITEM_PARAM_ITEM);
+	
+	if (!(0 < item_index < g_Items.Length))
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Invalid item index.");
+		return;
+	}
+	
+	int buffer_length;
+	if (GetNativeStringLength(GET_ITEM_PARAM_BUFFER, buffer_length) != SP_ERROR_NONE)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Failed to get buffer length.");
+		return;
+	}
+	
+	if (buffer_length != MAX_ITEM_VALUE_LENGTH)
+	{
+		ThrowNativeError(SP_ERROR_PARAM, "Buffer length is not MAX_ITEM_VALUE_LENGTH.");
+		return;
+	}
+	
+	char client_item_value[MAX_ITEM_VALUE_LENGTH];
+	int error;
+	if ((error = GetNativeString(GET_ITEM_PARAM_BUFFER, client_item_value, MAX_ITEM_VALUE_LENGTH)) != SP_ERROR_NONE)
+	{
+		ThrowNativeError(error, "Error while reading buffer - Error: %d", error);
+		return;
+	}
+	
+	g_ClientData.SetItemValue(client, item_index, client_item_value);
 }
 
 /*
-int Native_GetClientItemDefault(Handle plugin, int numParams)
-{
-	// TODO: Complete
-}
-
-int Native_GetClientItemValue(Handle plugin, int numParams)
-{
-	// TODO: Complete
-}
-
 int (Handle plugin, int numParams)
 {
 	

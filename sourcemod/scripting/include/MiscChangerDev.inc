@@ -29,6 +29,14 @@ enum
 	REGISTER_PARAM_APPLY_ITEM
 }
 
+// MiscChanger_GetClientItemValue, MiscChanger_SetClientItemValue
+enum
+{
+	GET_ITEM_PARAM_CLIENT = 1,
+	GET_ITEM_PARAM_ITEM,
+	GET_ITEM_PARAM_BUFFER
+}
+
 /**
  * Called when the core plugin is ready.
  * -
@@ -43,6 +51,21 @@ forward void MiscChanger_OnCoreReady();
  * 
  */
 forward void MiscChanger_OnCoreUnloaded();
+
+/**
+ * Called when client item value is being changed.
+ * 
+ * @param client 		Client index.
+ * @param item_index	Item index that's being changed.
+ * @param old_value		The current value of the client item (before the change).
+ * @param new_value		The value of the client item after the change.
+ * @param first_load	If this is the first load (value from the database / cookie).
+ *
+ * @note In most cases changing new_value to "0" will set the default item, look in module to verify.
+ *
+ * @return				Plugin_Handled or higher to block.
+ */
+forward void MiscChanger_OnItemValueChange(int client, int item_index, const char[] old_value, char[] new_value, bool first_load);
 
 /**
  * Returns if the core is ready or not.
@@ -62,11 +85,22 @@ native bool MiscChanger_IsCoreReady();
  * @param items				ArrayList of the items.
  * @param apply_item		A function to use to apply the value.
  *
- * @note					apply_item must be public and with the following signature: (int client, char[] new_value)
+ * @note apply_item must be public and with the following signature: (int client, char[] new_value)
  *
  * @return					index of the item in the Items ArrayList.
  */
 native int MiscChanger_RegisterItem(const char[] name, ArrayList categories, ArrayList values, Function apply_item);
+
+/**
+ * Gets the value of a client item.
+ *
+ * @param client		Client index.
+ * @param item_index	Item index.
+ * @param buffer		buffer to store the value.
+ *
+ * @note buffer must be with the size: MAX_ITEM_VALUE_LENGTH
+ */
+native int MiscChanger_GetClientItemValue(int client, int item_index, char[] buffer);
 
 /**
  * Changes the value of a specific item for a client.
@@ -75,52 +109,9 @@ native int MiscChanger_RegisterItem(const char[] name, ArrayList categories, Arr
  * @param index			The index of the item to change.
  * @param new_value		The new value to set.
  *
+ * @note buffer must be with the size: MAX_ITEM_VALUE_LENGTH
  */
-native void MiscChanger_SetClientItemValue(int client, int index, char[] new_value);
-
-/**
- * Called when client item value is being changed.
- * 
- * @param client 			Client index.
- * @param item_index		Item index that's being changed.
- * @param old_value			The current value of the client item (before the change).
- * @param new_value			The value of the client item after the change.
- * @param first_load		If this is the first load (value from the database / cookie).
- *
- * @note					In most cases changing new_value to "0" will set the default item,
- *							look in module to verify.
- *
- * @return					Plugin_Handled or higher to block.
- */
-forward void MiscChanger_OnItemValueChange(int client, int item_index, const char[] old_value, char[] new_value, bool first_load);
-
-/**
- * Gets the client default value of an item.
- *
- * @param client			Client index.
- * @param item				Item index.
- *
- */
-//native int MiscChanger_GetClientItem(int client, MCItem item);
-
-/**
- * Sets the client value of an item.
- *
- * @param client			Client index.
- * @param item				Item to change.
- * @param value				Value to set. if not specified 0 is the default client item. (from his inventory)
- *
- */
-//native void MiscChanger_SetClientItem(int client, MCItem item, int value = 0);
-
-/**
- * Gets the client default value of an item.
- *
- * @param client			Client index.
- * @param item				Item index.
- *
- */
-//native int MiscChanger_GetClientItemDefault(int client, MCItem item);
+native void MiscChanger_SetClientItemValue(int client, int item_index, char[] new_value);
 
 public SharedPlugin __pl_miscchanger = 
 {
@@ -136,7 +127,9 @@ public SharedPlugin __pl_miscchanger =
 #if !defined REQUIRE_PLUGIN
 public void __pl_miscchanger_SetNTVOptional()
 {
-	//MarkNativeAsOptional("MiscChanger_GetClientItem");
-	//MarkNativeAsOptional("MiscChanger_SetClientItem");
+	MarkNativeAsOptional("MiscChanger_IsCoreReady");
+	MarkNativeAsOptional("MiscChanger_RegisterItem");
+	MarkNativeAsOptional("MiscChanger_GetClientItemValue");
+	MarkNativeAsOptional("MiscChanger_SetClientItemValue");
 }
 #endif
