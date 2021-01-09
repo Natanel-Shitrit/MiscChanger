@@ -7,6 +7,7 @@
 #define MAX_ITEM_VALUE_LENGTH 64
 #define MAX_ITEM_COMMAND_LENGTH 64
 
+
 enum struct ItemData
 {
 	// Display Name of the item.
@@ -78,30 +79,20 @@ native int MiscChanger_RegisterItem(const char[] name, ArrayList categories, Arr
 native void MiscChanger_SetClientItemValue(int client, int index, char[] new_value);
 
 /**
- * Called when a item value has been changed.
+ * Called when client item value is being changed.
  * 
  * @param client 			Client index.
- * @param item				Item that has been changed.
- * @param oldvalue			The value of the item new (before the change).
- * @param &newvalue			The value of the item that will be after the change.
- * @param firstLoad			If this is the first load (value from the database).
+ * @param item_index		Item index that's being changed.
+ * @param old_value			The current value of the client item (before the change).
+ * @param new_value			The value of the client item after the change.
+ * @param first_load		If this is the first load (value from the database / cookie).
  *
- * @note					if newvalue set to 0 the plugin will use the players item from his inventory.
+ * @note					In most cases changing new_value to "0" will set the default item,
+ *							look in module to verify.
+ *
  * @return					Plugin_Handled or higher to block.
  */
-//forward void MiscChanger_OnItemChangedPre(int client, MCItem itemLoaded, int oldvalue, int &newvalue, bool isFirstLoad);
-
-/**
- * Called when a item value has been changed.
- * 
- * @param client 			Client index.
- * @param item				Item that has been changed.
- * @param oldvalue			The value of the item that was before the change.
- * @param &newvalue			The value of the item now (after the change).
- * @param firstLoad			If this is the first load (value from the database).
- *
- */
-//forward void MiscChanger_OnItemChangedPost(int client, MCItem itemLoaded, int oldvalue, int newvalue, bool isFirstLoad);
+forward void MiscChanger_OnItemValueChange(int client, int item_index, const char[] old_value, char[] new_value, bool first_load);
 
 /**
  * Gets the client default value of an item.
@@ -134,7 +125,7 @@ native void MiscChanger_SetClientItemValue(int client, int index, char[] new_val
 public SharedPlugin __pl_miscchanger = 
 {
 	name = "MiscChanger",
-	file = "MiscChanger_DEV_Simple.smx",
+	file = "MiscChanger_DEV.smx",
 #if defined REQUIRE_PLUGIN
 	required = 1,
 #else
@@ -145,8 +136,7 @@ public SharedPlugin __pl_miscchanger =
 #if !defined REQUIRE_PLUGIN
 public void __pl_miscchanger_SetNTVOptional()
 {
-	MarkNativeAsOptional("MiscChanger_GetClientItem");
-	MarkNativeAsOptional("MiscChanger_SetClientItem");
-	MarkNativeAsOptional("MiscChanger_GetClientItemDefault");
+	//MarkNativeAsOptional("MiscChanger_GetClientItem");
+	//MarkNativeAsOptional("MiscChanger_SetClientItem");
 }
 #endif

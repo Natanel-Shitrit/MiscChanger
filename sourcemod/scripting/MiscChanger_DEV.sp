@@ -75,72 +75,101 @@ ArrayList g_Items;
 enum struct pData
 {
 	// The client Account-ID, will be used if saving in a MySQL server.
-	int account_id;
+	int account_id[MAXPLAYERS + 1];
 	
 	// The item the client is currently choosing.
-	int choosing_item;
+	int choosing_item[MAXPLAYERS + 1];
 	
 	// The category the player is in.
-	int current_category;
-	
-	// string the client is searching
-	char search_str[MAX_ITEM_NAME_LENGTH];
+	int current_category[MAXPLAYERS + 1];
 	
 	// This is where all the client items can be found.
 	// NOTE: Search functions can be a good idea. (GetItemIndexBy...) 
-	ArrayList item_values;
+	ArrayList item_values[MAXPLAYERS + 1];
 	
 	void Init(int client)
 	{
-		this.Reset();
+		this.Close(client);
 		
 		// Set client account id.
-		this.account_id = GetSteamAccountID(client);
+		this.account_id[client] = GetSteamAccountID(client);
 		
 		// Create items array-list
-		this.item_values = new ArrayList(MAX_ITEM_VALUE_LENGTH);
+		this.item_values[client] = new ArrayList(MAX_ITEM_VALUE_LENGTH);
 		
 		// Add all items.
 		for (int current_item_index = 0; current_item_index < g_Items.Length; current_item_index++)
 		{
-			char current_item_value[MAX_ITEM_VALUE_LENGTH];
-			
-			this.item_values.PushString(current_item_value);
+			this.item_values[client].PushString("");
 		}
 	}
 	
-	void Reset()
+	void Reset(int client)
 	{
-		this.account_id = 0;
-		this.choosing_item = 0;
-		this.current_category = -1;
-		this.search_str = "";
+		this.account_id[client] = 0;
+		this.choosing_item[client] = 0;
+		this.current_category[client] = 0;
 	}
 	
-	void Close()
+	void Close(int client)
 	{
-		this.Reset();
-		delete this.item_values;
+		this.Reset(client);
+		delete this.item_values[client];
 	}
 	
-	void GetItemValue(int item_index, char[] buffer)
+	void GetItemValue(int client, int item_index, char[] buffer)
 	{
-		this.item_values.GetString(item_index, buffer, MAX_ITEM_VALUE_LENGTH);
+		this.item_values[client].GetString(item_index, buffer, MAX_ITEM_VALUE_LENGTH);
 	}
 	
-	void SetItemValue(int item_index, const char[] new_value)
+	bool SetItemValue(int client, int item_index, char[] new_value, bool first_load = false)
 	{
-		this.item_values.SetString(this.choosing_item, new_value);
+		Call_StartForward(g_OnClientItemValueChange);
+			
+		// int client
+		Call_PushCell(client);
+			
+		// int item_index
+		Call_PushCell(this.choosing_item[client]);
+			
+		// const char[] old_value
+		char current_value[MAX_ITEM_VALUE_LENGTH];
+		this.GetItemValue(client, this.choosing_item[client], current_value);
+		Call_PushString(current_value);
+			
+		// char[] new_value
+		Call_PushStringEx(new_value, MAX_ITEM_VALUE_LENGTH, SM_PARAM_STRING_UTF8|SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
+			
+		// bool first_load
+		Call_PushCell(first_load);
+			
+		// Send Forward
+		Action return_action;
+			
+		int error = Call_Finish(return_action);
+		if (error != SP_ERROR_NONE)
+		{
+			ThrowNativeError(error, "Global Forward Failed - Error Code: %d", error);
+			return false;
+		}
+			
+		if (return_action >= Plugin_Handled)
+		{
+			return false;
+		}
+		
+		// Save new value
+		this.item_values[client].SetString(this.choosing_item[client], new_value);
+		
+		// Apply Item
+		GetItemByIndex(this.choosing_item[client]).ApplyItem(client, new_value);
+		
+		return true;
 	}
-	
-	/* TODO: Change item value
-	void ChangeItemValue(int item_index, int new_value, bool preview)
-	{
-		// TODO: Complete
-	}
-	*/
 }
-pData g_ClientData[MAXPLAYERS + 1];
+pData g_ClientData;
+
+char g_SearchString[MAXPLAYERS][MAX_ITEM_NAME_LENGTH];
 
 public Plugin myinfo = 
 {
@@ -154,7 +183,6 @@ public Plugin myinfo =
 /*********************
 		Events
 **********************/
-
 // Called before OnPluginStart().
 // API is loading here.
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
@@ -201,7 +229,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	//g_OnItemRemove = new GlobalForward("MiscChanger_OnItemRemove", ET_Hook, Param_Cell, Param_String);
 	
 	// [✗] TODO: [pData Item] When a item value has been changed.
-	g_OnClientItemValueChange = new GlobalForward("MiscChanger_OnItemValueChange", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_CellByRef);
+	g_OnClientItemValueChange = new GlobalForward("MiscChanger_OnItemValueChange", ET_Hook, Param_Cell, Param_Cell, Param_String, Param_String, Param_Cell);
 	
 	RegPluginLibrary("MiscChanger");
 	
@@ -242,7 +270,7 @@ public void OnPluginStart()
 	{
 		if (IsClientInGame(current_client) && !IsFakeClient(current_client) && IsClientAuthorized(current_client))
 		{
-			g_ClientData[current_client].Init(current_client);
+			g_ClientData.Init(current_client);
 		}
 	}
 }
@@ -283,7 +311,6 @@ public void OnMapStart()
 /***********************
 		Commands
 ************************/
-
 public Action Command_MainMenu(int client, int argc)
 {
 	if (0 < client <= MaxClients && IsClientInGame(client))
@@ -296,15 +323,15 @@ public Action Command_MainMenu(int client, int argc)
 
 public Action Command_OpenItemMenu(int client, int argc)
 {
-	g_ClientData[client].Reset();
+	g_ClientData.Reset(client);
 	
 	char command[MAX_ITEM_COMMAND_LENGTH];
 	GetCmdArg(0, command, MAX_ITEM_COMMAND_LENGTH);
 	
-	if ((g_ClientData[client].choosing_item = FindItemOfCommand(command)) != -1)
+	if ((g_ClientData.choosing_item[client] = FindItemOfCommand(command)) != -1)
 	{
-		GetCmdArgString(g_ClientData[client].search_str, sizeof(pData::search_str));
-		if (g_ClientData[client].search_str[0])
+		GetCmdArgString(g_SearchString[client], sizeof(g_SearchString[]));
+		if (g_SearchString[client][0])
 		{
 			ShowItemMenu(client);
 		}
@@ -320,7 +347,6 @@ public Action Command_OpenItemMenu(int client, int argc)
 /********************
 		Menus
 *********************/
-
 void BuildMainMenu()
 {
 	g_MainMenu = new Menu(MainMenuHandler, MenuAction_Select | MenuAction_DisplayItem);
@@ -335,9 +361,9 @@ int MainMenuHandler(Menu menu, MenuAction action, int client, int item_index)
 	{
 		case MenuAction_Select:
 		{
-			g_ClientData[client].Reset();
+			g_ClientData.Reset(client);
 			
-			g_ClientData[client].choosing_item = item_index;
+			g_ClientData.choosing_item[client] = item_index;
 			
 			ShowItemCategoriesMenu(client);
 		}
@@ -350,7 +376,7 @@ int MainMenuHandler(Menu menu, MenuAction action, int client, int item_index)
 			
 			// Get client current item value:
 			char client_current_item_value[MAX_ITEM_VALUE_LENGTH];
-			g_ClientData[client].GetItemValue(item_index, client_current_item_value);
+			g_ClientData.GetItemValue(client, item_index, client_current_item_value);
 			
 			// Get client current item name with the value:
 			char item_menu_with_client_value[MAX_ITEM_NAME_LENGTH * 2];
@@ -380,12 +406,12 @@ int MainMenuHandler(Menu menu, MenuAction action, int client, int item_index)
 void ShowItemCategoriesMenu(int client, int start_at = 0)
 {
 	// Validate item index - must be in this range:
-	if (!(0 <= g_ClientData[client].choosing_item < g_Items.Length))
+	if (!(0 <= g_ClientData.choosing_item[client] < g_Items.Length))
 	{
 		return;
 	}
 	
-	Item item; item = GetItemByIndex(g_ClientData[client].choosing_item);
+	Item item; item = GetItemByIndex(g_ClientData.choosing_item[client]);
 	
 	if (!item.categories || item.categories.Length == 1)
 	{
@@ -415,7 +441,7 @@ int ItemCategoriesMenuHandler(Menu menu, MenuAction action, int param1, int para
 		{
 			int client = param1, category_num = param2;
 			
-			g_ClientData[client].current_category = category_num;
+			g_ClientData.current_category[client] = category_num;
 			
 			ShowItemMenu(client);
 		}
@@ -436,17 +462,17 @@ int ItemCategoriesMenuHandler(Menu menu, MenuAction action, int param1, int para
 void ShowItemMenu(int client, int start_at = 0)
 {
 	// Get Variables
-	Item item; item = GetItemByIndex(g_ClientData[client].choosing_item);
+	Item item; item = GetItemByIndex(g_ClientData.choosing_item[client]);
 	
 	char client_item_value[MAX_ITEM_VALUE_LENGTH];
-	g_ClientData[client].GetItemValue(g_ClientData[client].choosing_item, client_item_value);
+	g_ClientData.GetItemValue(client, g_ClientData.choosing_item[client], client_item_value);
 	
 	// Create Menu
 	Menu item_menu = new Menu(ItemMenuHandler, MenuAction_Select | MenuAction_Cancel | MenuAction_End);
-	if (g_ClientData[client].current_category != -1)
+	if (g_ClientData.current_category[client])
 	{
 		char category_name[MAX_ITEM_NAME_LENGTH];
-		item.GetCategoryName(g_ClientData[client].current_category, category_name);
+		item.GetCategoryName(g_ClientData.current_category[client], category_name);
 		item_menu.SetTitle("%s Choose A %s From %s:", PREFIX_NO_COLOR, item.name, category_name); //g_MainMenu.SetTitle("%T", "Main Menu Title", LANG_SERVER);
 	}
 	else
@@ -458,8 +484,8 @@ void ShowItemMenu(int client, int start_at = 0)
 	for (int current_item = 0; current_item < item.items.Length; current_item++)
 	{
 		item.items.GetArray(current_item, current_item_data, sizeof(current_item_data));
-		if (!current_item || ((g_ClientData[client].current_category == -1 || g_ClientData[client].current_category == current_item_data.category_index) &&
-							 (!g_ClientData[client].search_str[0] || StrContains(current_item_data.name, g_ClientData[client].search_str, false) != -1)))
+		if (!current_item || ((!g_ClientData.current_category[client] || g_ClientData.current_category[client] == current_item_data.category_index) &&
+							  (!g_SearchString[client][0] || StrContains(current_item_data.name, g_SearchString[client], false) != -1)))
 		{
 			item_menu.AddItem(current_item_data.value, current_item_data.name, StrEqual(client_item_value, current_item_data.value) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 		}
@@ -496,14 +522,10 @@ int ItemMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			menu.GetItem(item_value_num, new_item_value, MAX_ITEM_VALUE_LENGTH, _, new_item_name, MAX_ITEM_NAME_LENGTH);
 			
 			// Set the value of the client variable.
-			g_ClientData[client].SetItemValue(g_ClientData[client].choosing_item, new_item_value);
-			
-			// Apply Item
-			Item item; item = GetItemByIndex(g_ClientData[client].choosing_item);
-			item.ApplyItem(client, new_item_value);
-			
-			// Print Success message:
-			PrintToChat(client, "%s \x06Successfully\x01 changed \x02%s\x01 to \x02%s\x01!", PREFIX, item.name, new_item_name);
+			if (g_ClientData.SetItemValue(client, g_ClientData.choosing_item[client], new_item_value, true))
+			{
+				PrintToChat(client, "%s \x06Successfully\x01 changed \x02%s\x01 to \x02%s\x01!", PREFIX, GetItemByIndex(g_ClientData.choosing_item[client]).name, new_item_name);
+			}
 			
 			// Show Menu again.
 			if (menu.ItemCount > 2)
@@ -515,9 +537,9 @@ int ItemMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 		case MenuAction_Cancel:
 		{
 			int client = param1;
-			if (g_ClientData[client].current_category != -1)
+			if (g_ClientData.current_category[client])
 			{
-				ShowItemCategoriesMenu(client, (g_ClientData[client].current_category / 6) * 6);
+				ShowItemCategoriesMenu(client, (g_ClientData.current_category[client] / 6) * 6);
 			}
 			else
 			{
@@ -530,6 +552,8 @@ int ItemMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			delete menu;
 		}
 	}
+	
+	return 0;
 }
 
 /****************************
@@ -539,13 +563,13 @@ public void OnClientAuthorized(int client, const char[] auth)
 {
 	if (auth[0] && !StrEqual(auth, "BOT"))
 	{
-		g_ClientData[client].Init(client);
+		g_ClientData.Init(client);
 	}
 }
 
 public void OnClientDisconnect(int client)
 {
-	g_ClientData[client].Close();
+	g_ClientData.Close(client);
 }
 
 /**********************
@@ -609,6 +633,9 @@ int Native_RegisterItem(Handle plugin, int numParams)
 	if (categories)
 	{
 		new_item.categories = view_as<ArrayList>(CloneHandle(categories));
+		
+		new_item.categories.ShiftUp(0);
+		new_item.categories.SetString(0, "All Items");
 	}
 	
 	// Get the item values:
@@ -629,9 +656,9 @@ int Native_RegisterItem(Handle plugin, int numParams)
 	
 	for (int current_client = 1; current_client <= MaxClients; current_client++)
 	{
-		if (g_ClientData[current_client].item_values)
+		if (g_ClientData.item_values[current_client])
 		{
-			g_ClientData[current_client].item_values.PushString("");
+			g_ClientData.item_values[current_client].PushString("");
 		}
 	}
 	
@@ -666,40 +693,10 @@ int Native_GetClientItemValue(Handle plugin, int numParams)
 {
 	// TODO: Complete
 }
-*/
 
-/*
 int (Handle plugin, int numParams)
 {
 	
-}
-*/
-
-/*
-any[] GetItemDefinition(int index)
-{
-	if (!g_ItemDefinitions || !(0 < index < g_ItemDefinitions.Length))
-	{
-		return  { 0 };
-	}
-	
-	ItemDefinition item_def;
-	g_ItemDefinitions.GetArray(index, item_def, sizeof(item_def));
-	
-	return item_def;
-}
-
-any[] GetClientItem(int client, int index)
-{
-	if (!(0 < client <= MaxClients) || !g_ClientData[client].items || !(0 < index < g_ClientData[client].items.Length))
-	{
-		return  { 0 };
-	}
-	
-	Item item;
-	g_ClientData[client].items.GetArray(index, item, sizeof(item));
-	
-	return item;
 }
 */
 
@@ -772,7 +769,7 @@ int FindItemOfCommand(const char[] command)
 	return -1;
 }
 
-// Must check the index before calling this function because we can't really return invalid item or something similar.
+// Must check the index before calling this function because this can't really return invalid item or something similar.
 any[] GetItemByIndex(int index)
 {
 	Item item;
