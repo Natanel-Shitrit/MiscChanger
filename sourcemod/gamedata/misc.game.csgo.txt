@@ -7,8 +7,26 @@
 			"CCSPlayer::SetRank" // MedalCategory_t category, MedalRank_t rank
 			{
 				"library"		"server"
-				"linux"			"\x55\xB9\x04\x00\x00\x00\x89\xE5\x83\xEC\x48\x8B\x55\x0C\x89\x5D\xF4\x8B\x5D\x08\x89\x75\xF8\x89\x7D\xFC\x8D\x7D\x10\x8D\x84\x93\xE4\x15\x00\x00"
-				"windows"		"\x55\x8B\xEC\x81\xC1\xCC\x15\x00\x00"
+				"linux"			"\x55\xB9\x04\x00\x00\x00\x89\xE5\x83\xEC\x48\x8B\x55\x0C\x89\x5D\xF4\x8B\x5D\x08\x89\x75\xF8\x89\x7D\xFC\x8D\x7D\x10\x8D\x84\x93\xEC\x15\x00\x00"
+				"windows"		"\x55\x8B\xEC\x81\xC1\xD4\x15\x00\x00"
+			}
+		}
+		
+		"Offsets"
+		{
+			// https://github.com/perilouswithadollarsign/cstrike15_src/blob/f82112a2388b841d72cb62ca48ab1846dfcc11c8/game/server/cstrike15/cs_player.cpp#L880
+			// SetMusicID -> CCSPlayer (in xrefs) -> mov byte ptr[ebx + <THIS IS THE OFFSET>]
+			"ResetMusicKitFromInventory" // 5644 / 0x160C
+			{
+				"linux"		"2"
+				"windows"	"2"
+			}
+			
+			//https://github.com/perilouswithadollarsign/cstrike15_src/blob/f82112a2388b841d72cb62ca48ab1846dfcc11c8/game/server/cstrike15/cs_player.cpp#L877
+			"ResetCoinFromInventory" // 5636 / 0x1604
+			{
+				"linux"		"-6"
+				"windows"	"-6"
 			}
 		}
 	}
