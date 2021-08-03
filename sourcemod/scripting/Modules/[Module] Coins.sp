@@ -9,12 +9,24 @@
 #define MODULE_NAME "Coin"
 #define MEDAL_CATEGORY_SEASON_COIN 5
 
+int g_ModuleIndex = -1;
+
 ArrayList g_Categories;
 ArrayList g_Coins;
 
 Handle g_hSetRank;
 int g_ResetCoinFromInventoryOffset;
 
+public Plugin myinfo = 
+{
+	name = "[MiscChanger] "... MODULE_NAME ..." Module",
+	author = "Natanel 'LuqS'",
+	description = "A module for the MiscChager plugin that allows players to change thier in-game "... MODULE_NAME ..."!",
+	version = "1.0.0",
+	url = "https://steamcommunity.com/id/luqsgood || Discord: LuqS#6505"
+};
+
+// Load GameData and items if possible.
 public void OnPluginStart()
 {
 	LoadGameData();
@@ -25,37 +37,49 @@ public void OnPluginStart()
 	}
 }
 
-public void MiscChanger_OnCoreReady()
+// Remove the item from core plugin.
+public void OnPluginEnd()
 {
-	if (eItems_AreItemsSynced())
+	MiscChanger_RemoveItem(g_ModuleIndex);
+}
+
+// When a library is added check if it's the core plugin and register the item if not already loaded and data from eItems has been loaded.
+public void OnLibraryAdded(const char[] name)
+{
+	if (StrEqual(name, "MiscChanger"))
 	{
-		if (!g_Coins)
+		if (g_ModuleIndex == -1 && eItems_AreItemsSynced())
 		{
-			LoadCoins();
+			g_ModuleIndex = MiscChanger_RegisterItem(MODULE_NAME, g_Categories.Clone(), g_Coins.Clone(), ApplyCoin, "Flair");
 		}
-		
-		MiscChanger_RegisterItem(MODULE_NAME, g_Categories, g_Coins, ApplyCoin);
-		
-		// We don't need this anymore.
-		delete g_Coins;
 	}
 }
 
+// Change index to invalid when core plugin is unloaded.
+public void OnLibraryRemoved(const char[] name)
+{
+	if (StrEqual(name, "MiscChanger"))
+	{
+		g_ModuleIndex = -1;
+	}
+}
+
+// change module index 
+public void MiscChanger_OnItemRemoved(int index)
+{
+	if (g_ModuleIndex > index)
+	{
+		g_ModuleIndex--;
+	}
+}
+
+// Load data from eItems
 public void eItems_OnItemsSynced()
 {
-	LoadCoins();
-	
-	if (MiscChanger_IsCoreReady())
-	{
-		MiscChanger_OnCoreReady();
-	}
-}
-
-void LoadCoins()
-{
+	// Load Coins
 	int num_of_coinsets = eItems_GetCoinsSetsCount();
 	
-	g_Categories = new ArrayList(MAX_ITEM_NAME_LENGTH);
+	g_Categories = new ArrayList(ByteCountToCells(MAX_ITEM_NAME_LENGTH));
 	char current_category_name[MAX_ITEM_NAME_LENGTH];
 	for (int current_coinset = 0; current_coinset < num_of_coinsets; current_coinset++)
 	{
@@ -63,12 +87,12 @@ void LoadCoins()
 		g_Categories.PushString(current_category_name);
 	}
 	
-	g_Coins = new ArrayList(sizeof(ItemData));
-	ItemData current_item;
+	g_Coins = new ArrayList(sizeof(ItemValue));
+	ItemValue current_item;
 	for (int current_coin = 0; current_coin < eItems_GetCoinsCount(); current_coin++)
 	{
-		IntToString(eItems_GetCoinDefIndexByCoinNum(current_coin), current_item.value, sizeof(ItemData::value));
-		eItems_GetCoinDisplayNameByCoinNum(current_coin, current_item.name, sizeof(ItemData::name));
+		IntToString(eItems_GetCoinDefIndexByCoinNum(current_coin), current_item.value, sizeof(ItemValue::value));
+		eItems_GetCoinDisplayNameByCoinNum(current_coin, current_item.display_name, sizeof(ItemValue::display_name));
 		
 		for (int current_coinset = 0; current_coinset < num_of_coinsets; current_coinset++)
 		{
@@ -81,8 +105,14 @@ void LoadCoins()
 		
 		g_Coins.PushArray(current_item);
 	}
+	
+	if (g_ModuleIndex != -1 && LibraryExists("MiscChanger"))
+	{
+		g_ModuleIndex = MiscChanger_RegisterItem(MODULE_NAME, g_Categories.Clone(), g_Coins.Clone(), ApplyCoin, "Flair");
+	}
 }
 
+// Function to pass to the core plugin that changes the in-game item.
 public void ApplyCoin(int client, const char[] new_value)
 {
 	int value = StringToInt(new_value);
@@ -93,6 +123,14 @@ public void ApplyCoin(int client, const char[] new_value)
 	else // Default
 	{
 		SetEntData(client, g_ResetCoinFromInventoryOffset, 1, 1);
+	}
+}
+
+public void OnClientPutInServer(int client)
+{
+	if (!IsFakeClient(client))
+	{
+		SetEntData(client, g_ResetCoinFromInventoryOffset, 0, 1);
 	}
 }
 

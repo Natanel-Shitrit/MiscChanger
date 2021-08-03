@@ -8,86 +8,36 @@
 #define PREFIX " \x04"... PREFIX_NO_COLOR ..."\x01"
 #define CORE_CONFIG_PATH "configs/MiscChanger/misc_changer.cfg"
 
-// Is Core Ready
-bool g_IsReady;
-
 // Main menu - where you can see all the registered items.
 Menu g_MainMenu;
 
 // Config
 KeyValues g_Config;
 
-// API	-------	Core
-GlobalForward 	g_OnCoreReady, 
-				g_OnCoreUnloaded, 
+// API	-------	// Item
+GlobalForward 	g_OnItemRegistered,
+				g_OnItemRemoved,
 				
 				// pData
 				g_OnClientItemValueChange;
 
-enum struct Item
-{
-	// The name of the item.
-	char name[MAX_ITEM_NAME_LENGTH];
-	
-	// ArrayList of category names.
-	ArrayList categories;
-	
-	// ArrayList of items.
-	ArrayList items;
-	
-	// ArrayList of the item commands.
-	ArrayList commands;
-	
-	// Owner Plugin
-	Handle owner;
-	
-	// function to use to apply the item
-	Function apply_item;
-	
-	void ApplyItem(int client, const char[] new_value)
-	{
-		Call_StartFunction(this.owner, this.apply_item); // int client, char[] new_value
-		Call_PushCell(client);
-		Call_PushString(new_value);
-		Call_Finish();
-	}
-	
-	void GetItemDisplayName(int item_index, char[] buffer)
-	{
-		ItemData item_data;
-		this.items.GetArray(item_index, item_data, sizeof(item_data));
-		
-		strcopy(buffer, MAX_ITEM_NAME_LENGTH, item_data.name);
-	}
-	
-	void GetCategoryName(int index, char[] buffer)
-	{
-		this.categories.GetString(index, buffer, MAX_ITEM_NAME_LENGTH);
-	}
-}
+
 ArrayList g_Items;
 
 enum struct pData
 {
-	// The client Account-ID, will be used if saving in a MySQL server.
-	int account_id[MAXPLAYERS + 1];
-	
 	// The item the client is currently choosing.
 	int choosing_item[MAXPLAYERS + 1];
 	
-	// The category the player is in.
-	int current_category[MAXPLAYERS + 1];
+	// The category the player is currently in.
+	int choosing_category[MAXPLAYERS + 1];
 	
 	// This is where all the client items can be found.
-	// NOTE: Search functions can be a good idea. (GetItemIndexBy...) 
 	ArrayList item_values[MAXPLAYERS + 1];
 	
 	void Init(int client)
 	{
 		this.Close(client);
-		
-		// Set client account id.
-		this.account_id[client] = GetSteamAccountID(client);
 		
 		// Create items array-list
 		this.item_values[client] = new ArrayList(MAX_ITEM_VALUE_LENGTH);
@@ -101,9 +51,8 @@ enum struct pData
 	
 	void Reset(int client)
 	{
-		this.account_id[client] = 0;
 		this.choosing_item[client] = 0;
-		this.current_category[client] = 0;
+		this.choosing_category[client] = 0;
 	}
 	
 	void Close(int client)
@@ -117,7 +66,7 @@ enum struct pData
 		this.item_values[client].GetString(item_index, buffer, MAX_ITEM_VALUE_LENGTH);
 	}
 	
-	bool SetItemValue(int client, int item_index, char[] new_value, bool first_load = false)
+	bool SetItemValue(int client, int item_index, char[] new_value, bool apply_item = true, bool first_load = false)
 	{
 		Call_StartForward(g_OnClientItemValueChange);
 			
@@ -125,11 +74,11 @@ enum struct pData
 		Call_PushCell(client);
 			
 		// int item_index
-		Call_PushCell(this.choosing_item[client]);
+		Call_PushCell(item_index);
 			
 		// const char[] old_value
 		char current_value[MAX_ITEM_VALUE_LENGTH];
-		this.GetItemValue(client, this.choosing_item[client], current_value);
+		this.GetItemValue(client, item_index, current_value);
 		Call_PushString(current_value);
 			
 		// char[] new_value
@@ -154,10 +103,13 @@ enum struct pData
 		}
 		
 		// Save new value
-		this.item_values[client].SetString(this.choosing_item[client], new_value);
+		this.item_values[client].SetString(item_index, new_value);
 		
 		// Apply Item
-		GetItemByIndex(this.choosing_item[client]).ApplyItem(client, new_value);
+		if (apply_item)
+		{
+			GetItemByIndex(item_index).ApplyItem(client, new_value);
+		}
 		
 		return true;
 	}
@@ -191,13 +143,13 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	
 	//=================================[ NATIVES ]=================================//
 	
-	// [✓] TODO: [Core] Check if the core plugin is ready.
-	CreateNative("MiscChanger_IsCoreReady", Native_IsCoreReady);
+	// [✓] TODO: [Core] Sets a client item value.
+	CreateNative("MiscChanger_GetItemsArrayList", Native_GetItemsArrayList);
 	
 	// [✓] TODO: [Item] Registering an item to the system.
 	CreateNative("MiscChanger_RegisterItem", Native_RegisterItem);
 	
-	// [✗] TODO: [Item] Removes an item from the system.
+	// [✓] TODO: [Item] Removes an item from the system.
 	CreateNative("MiscChanger_RemoveItem", Native_RemoveItem);
 	
 	// [✓] TODO: [pData] Gets a client item value.
@@ -206,21 +158,18 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	// [✓] TODO: [pData] Sets a client item value.
 	CreateNative("MiscChanger_SetClientItemValue", Native_SetClientItemValue);
 	
+	// [✓] TODO: [pData] Gets a client item value.
+	CreateNative("MiscChanger_GetClientItemsValues", Native_GetClientItemsValues);
+	
 	//=================================[ FORWARDS ]=================================//
 	
-	// [✓] TODO: [Core] When the core plugin is ready (only after this moment items should be added).
-	g_OnCoreReady = new GlobalForward("MiscChanger_OnCoreReady", ET_Ignore);
+	// [✓] TODO: [Item] When a item is beening added.
+	g_OnItemRegistered = new GlobalForward("MiscChanger_OnItemRegistered", ET_Ignore, Param_Cell, Param_String, Param_String);
 	
-	// [✓] TODO: [Core] When the core plugin is unloaded (when you can't use it anymore).
-	g_OnCoreUnloaded = new GlobalForward("MiscChanger_OnCoreUnloaded", ET_Ignore);
+	// [✓] TODO: [Item] When a item is beening removed.
+	g_OnItemRemoved = new GlobalForward("MiscChanger_OnItemRemoved", ET_Hook, Param_Cell);
 	
-	// [✗] TODO: [ItemDefinition] When a item is beening added.
-	//g_OnItemAdd = new GlobalForward("MiscChanger_OnItemRegister", ET_Hook, Param_String);
-	
-	// [✗] TODO: [ItemDefinition] When a item is beening removed.
-	//g_OnItemRemove = new GlobalForward("MiscChanger_OnItemRemove", ET_Hook, Param_Cell, Param_String);
-	
-	// [✓] TODO: [pData Item] When a item value has been changed.
+	// [✓] TODO: [pData] When a item value has been changed.
 	g_OnClientItemValueChange = new GlobalForward("MiscChanger_OnItemValueChange", ET_Hook, Param_Cell, Param_Cell, Param_String, Param_String, Param_Cell);
 	
 	RegPluginLibrary("MiscChanger");
@@ -247,16 +196,6 @@ public void OnPluginStart()
 	// Create the items Array-List.
 	g_Items = new ArrayList(sizeof(Item));
 	
-	// Core is ready and modules can be added now.
-	g_IsReady = true;
-	
-	// Fire the forward - let all of the modules know that they can use the natives.
-	if (g_OnCoreReady.FunctionCount)
-	{
-		Call_StartForward(g_OnCoreReady);
-		Call_Finish();
-	}
-	
 	// Late Load support
 	for (int current_client = 1; current_client <= MaxClients; current_client++)
 	{
@@ -271,13 +210,6 @@ public void OnPluginStart()
 // NOTE: probably not fired when server is crashing - clients data to not be saved.
 public void OnPluginEnd()
 {
-	// Fire the forward - let all of the modules know that they can not longer use the natives.
-	if (g_OnCoreUnloaded.FunctionCount)
-	{
-		Call_StartForward(g_OnCoreUnloaded);
-		Call_Finish();
-	}
-	
 	// Early-Unload Support
 	for (int iCurrentClient = 1; iCurrentClient <= MaxClients; iCurrentClient++)
 	{
@@ -374,13 +306,13 @@ int MainMenuHandler(Menu menu, MenuAction action, int client, int item_index)
 			char item_menu_with_client_value[MAX_ITEM_NAME_LENGTH * 2];
 			Item item; g_Items.GetArray(item_index, item, sizeof(item));
 			
-			ItemData current_item_data;
-			for (int current_item = 0; current_item < item.items.Length; current_item++)
+			ItemValue current_item_data;
+			for (int current_item = 0; current_item < item.values.Length; current_item++)
 			{
-				item.items.GetArray(current_item, current_item_data, sizeof(current_item_data));
+				item.values.GetArray(current_item, current_item_data, sizeof(current_item_data));
 				if (StrEqual(client_current_item_value, current_item_data.value))
 				{
-					strcopy(item_menu_with_client_value, MAX_ITEM_NAME_LENGTH, current_item_data.name);
+					strcopy(item_menu_with_client_value, MAX_ITEM_NAME_LENGTH, current_item_data.display_name);
 					break;
 				}
 			}
@@ -414,11 +346,11 @@ void ShowItemCategoriesMenu(int client, int start_at = 0)
 		Menu item_categories_menu = new Menu(ItemCategoriesMenuHandler, MenuAction_Select | MenuAction_Cancel | MenuAction_End);
 		item_categories_menu.SetTitle("%s Choose A %s Category:", PREFIX_NO_COLOR, item.name); //g_MainMenu.SetTitle("%T", "Main Menu Title", LANG_SERVER);
 	
-		char current_category_name[MAX_ITEM_NAME_LENGTH];
-		for (int current_category = 0; current_category < item.categories.Length; current_category++)
+		char choosing_category_name[MAX_ITEM_NAME_LENGTH];
+		for (int choosing_category = 0; choosing_category < item.categories.Length; choosing_category++)
 		{
-			item.categories.GetString(current_category, current_category_name, MAX_ITEM_NAME_LENGTH);
-			item_categories_menu.AddItem("", current_category_name);
+			item.categories.GetString(choosing_category, choosing_category_name, MAX_ITEM_NAME_LENGTH);
+			item_categories_menu.AddItem("", choosing_category_name);
 		}
 		
 		item_categories_menu.DisplayAt(client, start_at, MENU_TIME_FOREVER);
@@ -433,7 +365,7 @@ int ItemCategoriesMenuHandler(Menu menu, MenuAction action, int param1, int para
 		{
 			int client = param1, category_num = param2;
 			
-			g_ClientData.current_category[client] = category_num;
+			g_ClientData.choosing_category[client] = category_num;
 			
 			ShowItemMenu(client);
 		}
@@ -461,10 +393,10 @@ void ShowItemMenu(int client, int start_at = 0)
 	
 	// Create Menu
 	Menu item_menu = new Menu(ItemMenuHandler, MenuAction_Select | MenuAction_Cancel | MenuAction_End);
-	if (g_ClientData.current_category[client])
+	if (g_ClientData.choosing_category[client])
 	{
 		char category_name[MAX_ITEM_NAME_LENGTH];
-		item.GetCategoryName(g_ClientData.current_category[client], category_name);
+		item.GetCategoryName(g_ClientData.choosing_category[client], category_name);
 		item_menu.SetTitle("%s Choose A %s From %s:", PREFIX_NO_COLOR, item.name, category_name); //g_MainMenu.SetTitle("%T", "Main Menu Title", LANG_SERVER);
 	}
 	else
@@ -472,14 +404,14 @@ void ShowItemMenu(int client, int start_at = 0)
 		item_menu.SetTitle("%s Choose A %s:", PREFIX_NO_COLOR, item.name);
 	}
 	
-	ItemData current_item_data;
-	for (int current_item = 0; current_item < item.items.Length; current_item++)
+	ItemValue current_item_data;
+	for (int current_item = 0; current_item < item.values.Length; current_item++)
 	{
-		item.items.GetArray(current_item, current_item_data, sizeof(current_item_data));
-		if (!current_item || ((!g_ClientData.current_category[client] || g_ClientData.current_category[client] == current_item_data.category_index) &&
-							  (!g_SearchString[client][0] || StrContains(current_item_data.name, g_SearchString[client], false) != -1)))
+		item.values.GetArray(current_item, current_item_data, sizeof(current_item_data));
+		if (!current_item || ((!g_ClientData.choosing_category[client] || g_ClientData.choosing_category[client] == current_item_data.category_index + 1) &&
+							  (!g_SearchString[client][0] || StrContains(current_item_data.display_name, g_SearchString[client], false) != -1)))
 		{
-			item_menu.AddItem(current_item_data.value, current_item_data.name, StrEqual(client_item_value, current_item_data.value) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+			item_menu.AddItem(current_item_data.value, current_item_data.display_name, StrEqual(client_item_value, current_item_data.value) ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 		}
 	}
 	
@@ -514,9 +446,24 @@ int ItemMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			menu.GetItem(item_value_num, new_item_value, MAX_ITEM_VALUE_LENGTH, _, new_item_name, MAX_ITEM_NAME_LENGTH);
 			
 			// Set the value of the client variable.
-			if (g_ClientData.SetItemValue(client, g_ClientData.choosing_item[client], new_item_value, true))
+			if (g_ClientData.SetItemValue(client, g_ClientData.choosing_item[client], new_item_value))
 			{
 				PrintToChat(client, "%s \x06Successfully\x01 changed \x02%s\x01 to \x02%s\x01!", PREFIX, GetItemByIndex(g_ClientData.choosing_item[client]).name, new_item_name);
+			}
+			
+			// Reset all other item with the same data name.
+			Item changed_item; changed_item = GetItemByIndex(g_ClientData.choosing_item[client]);
+			for (int current_item_index = 0; current_item_index < g_Items.Length; current_item_index++)
+			{
+				if (g_ClientData.choosing_item[client] != current_item_index)
+				{
+					Item current_item; current_item = GetItemByIndex(current_item_index);
+					
+					if (StrEqual(changed_item.data_name, current_item.data_name))
+					{
+						g_ClientData.SetItemValue(client, current_item_index, "", false);
+					}
+				}
 			}
 			
 			// Show Menu again.
@@ -529,9 +476,9 @@ int ItemMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 		case MenuAction_Cancel:
 		{
 			int client = param1;
-			if (g_ClientData.current_category[client])
+			if (g_ClientData.choosing_category[client])
 			{
-				ShowItemCategoriesMenu(client, (g_ClientData.current_category[client] / 6) * 6);
+				ShowItemCategoriesMenu(client, (g_ClientData.choosing_category[client] / 6) * 6);
 			}
 			else
 			{
@@ -559,7 +506,7 @@ public void OnClientAuthorized(int client, const char[] auth)
 	}
 }
 
-public void OnClientDisconnect(int client)
+public void OnClientDisconnect_Post(int client)
 {
 	g_ClientData.Close(client);
 }
@@ -567,19 +514,13 @@ public void OnClientDisconnect(int client)
 /**********************
 		Natives
 ***********************/
-int Native_IsCoreReady(Handle plugin, int numParams)
+any Native_GetItemsArrayList(Handle plugin, int numParams)
 {
-	return g_IsReady;
+	return CloneHandle(g_Items, plugin);
 }
 
-int Native_RegisterItem(Handle plugin, int numParams)
+any Native_RegisterItem(Handle plugin, int numParams)
 {
-	// If core is not ready - throw an error.
-	if (!g_IsReady)
-	{
-		ThrowNativeError(SP_ERROR_NATIVE, "%s Core is not ready!", PREFIX_NO_COLOR);
-	}
-	
 	Item new_item;
 	
 	// Getting the item name:
@@ -596,23 +537,6 @@ int Native_RegisterItem(Handle plugin, int numParams)
 	}
 	
 	GetNativeString(REGISTER_PARAM_ITEM_NAME, new_item.name, MAX_ITEM_NAME_LENGTH);
-	/*
-	// Getting the item command:
-	int command_length;
-	if (GetNativeStringLength(REGISTER_PARAM_ITEM_COMMAND, command_length) != SP_ERROR_NONE)
-	{
-		ThrowNativeError(SP_ERROR_NATIVE, "%s Failed to get the item command length!", PREFIX_NO_COLOR);
-	}
-	
-	// ++ for EOS.
-	if (!(0 < ++command_length <= MAX_ITEM_COMMAND_LENGTH))
-	{
-		ThrowNativeError(SP_ERROR_NATIVE, "%s Command is empty or too long! (MAX %d characters)", PREFIX_NO_COLOR, MAX_ITEM_COMMAND_LENGTH);
-	}
-	
-	char command[MAX_ITEM_NAME_LENGTH];
-	GetNativeString(REGISTER_PARAM_ITEM_COMMAND, command, MAX_ITEM_NAME_LENGTH);
-	*/
 	
 	// Onwer plugin
 	new_item.owner = plugin;
@@ -626,26 +550,50 @@ int Native_RegisterItem(Handle plugin, int numParams)
 	{
 		new_item.categories = view_as<ArrayList>(CloneHandle(categories));
 		
+		delete categories;
+		
+		// Free first position for the 'All Items' item.
 		new_item.categories.ShiftUp(0);
+		
+		// Add 'All Items' Option.
 		new_item.categories.SetString(0, "All Items");
 	}
 	
 	// Get the item values:
-	new_item.items = view_as<ArrayList>(CloneHandle(view_as<Handle>(GetNativeCell(REGISTER_PARAM_ITEM_VALUES))));
+	Handle values = GetNativeCell(REGISTER_PARAM_ITEM_VALUES);
+	if (values)
+	{
+		new_item.values = view_as<ArrayList>(CloneHandle(values));
+		
+		delete values;
+		
+		// Free first position for the 'Default Item' item.
+		new_item.values.ShiftUp(0);
+		
+		// Add 'Default Item' Option.
+		ItemValue default_item;
+		Format(default_item.display_name, MAX_ITEM_NAME_LENGTH, "Default %s", new_item.name);
+		new_item.values.SetArray(0, default_item, sizeof(default_item));
+	}
 	
-	// Free first position for the default item.
-	new_item.items.ShiftUp(0);
+	int data_name_length;
+	if (GetNativeStringLength(REGISTER_PARAM_DATA_NAME, name_length) != SP_ERROR_NONE)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "%s Failed to get the item data name length!", PREFIX_NO_COLOR);
+	}
 	
-	// Add 'Default Item'.
-	ItemData default_item;
-	Format(default_item.name, MAX_ITEM_NAME_LENGTH, "Default %s", new_item.name);
-	new_item.items.SetArray(0, default_item, sizeof(default_item));
+	// ++ for EOS.
+	if (!(++data_name_length <= MAX_ITEM_NAME_LENGTH))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "%s Data Name is too long! (MAX %d characters)", PREFIX_NO_COLOR, MAX_ITEM_NAME_LENGTH);
+	}
+	
+	GetNativeString(REGISTER_PARAM_DATA_NAME, new_item.data_name, MAX_ITEM_NAME_LENGTH);
 	
 	// Add to Main-Menu.
 	g_MainMenu.AddItem("", new_item.name);
 	
-	// TODO: 'MiscChanger_OnItemRegister' Forward.
-	
+	// Add item buffer for each client.
 	for (int current_client = 1; current_client <= MaxClients; current_client++)
 	{
 		if (g_ClientData.item_values[current_client])
@@ -654,23 +602,62 @@ int Native_RegisterItem(Handle plugin, int numParams)
 		}
 	}
 	
+	// Load Commands.
 	char desc[32];
 	Format(desc, sizeof(desc), "Opens the %s Menu.", new_item.name);
 	
 	new_item.commands = new ArrayList(ByteCountToCells(MAX_ITEM_COMMAND_LENGTH));
 	RegItemCommands(new_item.name, Command_OpenItemMenu, desc, new_item);
 	
-	return g_Items.PushArray(new_item, sizeof(new_item));
-}
-
-int Native_RemoveItem(Handle plugin, int numParams)
-{
-	//g_MainMenu.RemoveItem()
+	// Push to global ArrayList.
+	int new_item_index = g_Items.PushArray(new_item, sizeof(new_item));
 	
-	/* TODO: Complete */
+	// Fire Forward.
+	if (g_OnItemRegistered.FunctionCount)
+	{
+		Call_StartForward(g_OnItemRegistered); // int index, const char[] name
+		Call_PushCell(new_item_index);
+		Call_PushString(new_item.name);
+		Call_PushString(new_item.data_name);
+		Call_Finish();
+	}
+	
+	// Return index in global ArrayList.
+	return new_item_index;
 }
 
-int Native_GetClientItemValue(Handle plugin, int numParams)
+any Native_RemoveItem(Handle plugin, int numParams)
+{
+	int item_index = GetNativeCell(REMOVE_ITEM_PARAM_INDEX);
+	
+	if (!(0 <= item_index < g_Items.Length))
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Invalid item index. (Got: %d, Range: 0-%d)", item_index, g_Items.Length);
+		return;
+	}
+	
+	// Delete all ArrayList to not leak handles.
+	Item item; item = GetItemByIndex(item_index);
+	
+	delete item.categories;
+	delete item.values;
+	delete item.commands;
+	
+	// Remove from global ArrayList.
+	g_Items.Erase(item_index);
+	
+	// Remove from main menu.
+	g_MainMenu.RemoveItem(item_index);
+	
+	if (g_OnItemRemoved.FunctionCount)
+	{
+		Call_StartForward(g_OnItemRemoved); // int index, const char[] name
+		Call_PushCell(item_index);
+		Call_Finish();
+	}
+}
+
+any Native_GetClientItemValue(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(GET_ITEM_PARAM_CLIENT);
 	
@@ -717,56 +704,77 @@ int Native_GetClientItemValue(Handle plugin, int numParams)
 	}
 }
 
-int Native_SetClientItemValue(Handle plugin, int numParams)
+any Native_SetClientItemValue(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(GET_ITEM_PARAM_CLIENT);
 	
 	if (!(0 < client <= MaxClients))
 	{
-		ThrowNativeError(SP_ERROR_INDEX, "Invalid client index.");
-		return;
+		return ThrowNativeError(SP_ERROR_INDEX, "Invalid client index %d.", client);
 	}
 	
 	if (!IsClientInGame(client))
 	{
-		ThrowNativeError(SP_ERROR_NATIVE, "Client not in-game.");
-		return;
+		return ThrowNativeError(SP_ERROR_NATIVE, "Client %d not in-game.", client);
 	}
 	
 	int item_index = GetNativeCell(GET_ITEM_PARAM_ITEM);
 	
-	if (!(0 < item_index < g_Items.Length))
+	if (!(0 <= item_index < g_Items.Length))
 	{
-		ThrowNativeError(SP_ERROR_INDEX, "Invalid item index.");
-		return;
-	}
-	
-	int buffer_length;
-	if (GetNativeStringLength(GET_ITEM_PARAM_BUFFER, buffer_length) != SP_ERROR_NONE)
-	{
-		ThrowNativeError(SP_ERROR_NATIVE, "Failed to get buffer length.");
-		return;
-	}
-	
-	if (buffer_length != MAX_ITEM_VALUE_LENGTH)
-	{
-		ThrowNativeError(SP_ERROR_PARAM, "Buffer length is not MAX_ITEM_VALUE_LENGTH.");
-		return;
+		return ThrowNativeError(SP_ERROR_INDEX, "Invalid item index. (Sent: %d | Range: 0-%d)", item_index, g_Items.Length);
 	}
 	
 	char client_item_value[MAX_ITEM_VALUE_LENGTH];
 	int error;
 	if ((error = GetNativeString(GET_ITEM_PARAM_BUFFER, client_item_value, MAX_ITEM_VALUE_LENGTH)) != SP_ERROR_NONE)
 	{
-		ThrowNativeError(error, "Error while reading buffer - Error: %d", error);
-		return;
+		return ThrowNativeError(error, "Error while reading buffer - Error: %d", error);
 	}
 	
-	g_ClientData.SetItemValue(client, item_index, client_item_value);
+	g_ClientData.SetItemValue(client, item_index, client_item_value, GetNativeCell(GET_ITEM_PARAM_APPLY), GetNativeCell(GET_ITEM_PARAM_APPLY));
+	
+	return 0;
+}
+
+any Native_GetClientItemsValues(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(GET_ITEM_PARAM_CLIENT);
+	
+	if (!(0 < client <= MaxClients))
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Invalid client index.");
+		return INVALID_HANDLE;
+	}
+	
+	if (!IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Client not in-game.");
+		return INVALID_HANDLE;
+	}
+	
+	ArrayList client_items = new ArrayList(ByteCountToCells(MAX_ITEM_VALUE_LENGTH));
+	
+	for (int current_item = 0; current_item < g_ClientData.item_values[client].Length; current_item++)
+	{
+		char current_item_value[MAX_ITEM_VALUE_LENGTH];
+		g_ClientData.GetItemValue(client, current_item, current_item_value);
+		
+		client_items.PushString(current_item_value);
+	}
+	
+	// Clone a handle that's owned by the calling plugin.
+	Handle cloned_client_items = CloneHandle(client_items, plugin);
+	
+	// Delete original ArrayList because we don't want memory leak.
+	delete client_items;
+	
+	// Return the cloned ArrayList.
+	return cloned_client_items;
 }
 
 /*
-int (Handle plugin, int numParams)
+any (Handle plugin, int numParams)
 {
 	
 }
@@ -848,4 +856,4 @@ any[] GetItemByIndex(int index)
 	g_Items.GetArray(index, item, sizeof(item));
 	
 	return item;
-} 
+}

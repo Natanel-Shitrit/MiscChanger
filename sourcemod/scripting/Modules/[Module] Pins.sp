@@ -9,10 +9,21 @@
 #define MODULE_NAME "Pin"
 #define MEDAL_CATEGORY_SEASON_COIN 5
 
+int g_ModuleIndex = -1;
+
 ArrayList g_Pins;
 
 Handle g_hSetRank;
 int g_ResetCoinFromInventoryOffset;
+
+public Plugin myinfo = 
+{
+	name = "[MiscChanger] "... MODULE_NAME ..." Module",
+	author = "Natanel 'LuqS'",
+	description = "A module for the MiscChager plugin that allows players to change thier in-game "... MODULE_NAME ..."!",
+	version = "1.0.0",
+	url = "https://steamcommunity.com/id/luqsgood || Discord: LuqS#6505"
+};
 
 public void OnPluginStart()
 {
@@ -24,40 +35,55 @@ public void OnPluginStart()
 	}
 }
 
-public void MiscChanger_OnCoreReady()
+public void OnPluginEnd()
 {
-	if (eItems_AreItemsSynced())
+	MiscChanger_RemoveItem(g_ModuleIndex);
+}
+
+public void OnLibraryAdded(const char[] name)
+{
+	if (StrEqual(name, "MiscChanger"))
 	{
-		if (!g_Pins)
+		if (g_ModuleIndex == -1 && eItems_AreItemsSynced())
 		{
-			LoadPins();
+			g_ModuleIndex = MiscChanger_RegisterItem(MODULE_NAME, null, g_Pins.Clone(), ApplyPin, "Flair");
 		}
-		
-		MiscChanger_RegisterItem(MODULE_NAME, null, g_Pins, ApplyPin);
+	}
+}
+
+public void OnLibraryRemoved(const char[] name)
+{
+	if (StrEqual(name, "MiscChanger"))
+	{
+		g_ModuleIndex = -1;
+	}
+}
+
+public void MiscChanger_OnItemRemoved(int index)
+{
+	if (g_ModuleIndex > index)
+	{
+		g_ModuleIndex--;
 	}
 }
 
 public void eItems_OnItemsSynced()
 {
-	LoadPins();
+	// Load Pins
+	g_Pins = new ArrayList(sizeof(ItemValue));
 	
-	if (MiscChanger_IsCoreReady())
-	{
-		MiscChanger_OnCoreReady();
-	}
-}
-
-void LoadPins()
-{
-	g_Pins = new ArrayList(sizeof(ItemData));
-	
-	ItemData current_item;
+	ItemValue current_item;
 	for (int current_pin = 0; current_pin < eItems_GetPinsCount(); current_pin++)
 	{
-		IntToString(eItems_GetPinDefIndexByPinNum(current_pin), current_item.value, sizeof(ItemData::value));
-		eItems_GetPinDisplayNameByPinNum(current_pin, current_item.name, sizeof(ItemData::name));
+		IntToString(eItems_GetPinDefIndexByPinNum(current_pin), current_item.value, sizeof(ItemValue::value));
+		eItems_GetPinDisplayNameByPinNum(current_pin, current_item.display_name, sizeof(ItemValue::display_name));
 		
 		g_Pins.PushArray(current_item);
+	}
+	
+	if (g_ModuleIndex != -1 && LibraryExists("MiscChanger"))
+	{
+		g_ModuleIndex = MiscChanger_RegisterItem(MODULE_NAME, null, g_Pins.Clone(), ApplyPin, "Flair");
 	}
 }
 
