@@ -9,17 +9,12 @@
 #define PREFIX " \x04"... PREFIX_NO_COLOR ..."\x01"
 #define PREFIX_NO_COLOR "[MiscChanger]"
 
-#define LOADOUT_POSITION_FLAIR0 55
-
 // Database
 Database g_Database;
 
 // Forwards
 GlobalForward g_fOnItemChangedPreForward; 	// Blockable
 GlobalForward g_fOnItemChangedPostForward;	// Not Blockable
-
-// SDK Handles
-Handle g_hSetRank;
 
 // Offsets
 int g_ResetMusicKitFromInventoryOffset;
@@ -111,7 +106,7 @@ enum struct PlayerInfo
 					// Change in-game | 0 = Player default item
 					if (newvalue)
 					{
-						SetEntProp(client, Prop_Send, "m_unMusicID", newvalue);
+						SetEntProp(client, Prop_Send, "m_unMusicID", newvalue, .size=2);
 					}
 					else
 					{
@@ -127,7 +122,7 @@ enum struct PlayerInfo
 					// Change in-game | 0 = Player default item
 					if (newvalue)
 					{
-						SDKCall(g_hSetRank, client, MEDAL_CATEGORY_SEASON_COIN, newvalue);
+						SetEntProp(client, Prop_Send, "m_rank", newvalue, .element=view_as<int>(MEDAL_CATEGORY_SEASON_COIN));
 					}
 					else
 					{
@@ -182,7 +177,7 @@ public void OnPluginStart()
 		SetFailState("%s This plugin is for CSGO only.", PREFIX_NO_COLOR);
 	
 	// Load needed Game-Data (Signatures).
-	LoadGameData();
+	CalculateOffsets();
 	
 	// Create ArrayList for the data.
 	CreateArrayLists();
@@ -884,33 +879,10 @@ int Native_SetClientItem(Handle plugin, int numParams)
 		Helpers
 ***********************/
 
-// Load needed Game-Data (Signatures).
-void LoadGameData()
+void CalculateOffsets()
 {
-	GameData hGameData = new GameData("misc.game.csgo");
-	
-	if(!hGameData)
-		SetFailState("'sourcemod/gamedata/misc.game.csgo.txt' is missing!");
-	
-	// https://github.com/perilouswithadollarsign/cstrike15_src/blob/29e4c1fda9698d5cebcdaf1a0de4b829fa149bf8/game/server/cstrike15/cs_player.cpp#L16369-L16372
-	// Changes the the rank of the player ( this case use is the coin )
-	// void CCSPlayer::SetRank( MedalCategory_t category, MedalRank_t rank )
-	StartPrepSDKCall(SDKCall_Player);
-	
-	PrepSDKCall_SetFromConf(hGameData, SDKConf_Signature, "CCSPlayer::SetRank"); // void
-	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain); // int MedalCategory_t category
-	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain); // int MedalRank_t rank
-	
-	if (!(g_hSetRank = EndPrepSDKCall()))
-		SetFailState("Failed to get CCSPlayer::SetRank signature");
-	
-	int m_unMusicID = FindSendPropInfo("CCSPlayer", "m_unMusicID");
-	
-	g_ResetMusicKitFromInventoryOffset = m_unMusicID + hGameData.GetOffset("ResetMusicKitFromInventory");
-	g_ResetCoinFromInventoryOffset = m_unMusicID + hGameData.GetOffset("ResetCoinFromInventory");
-	
-	PrintToChatAll("Offset: %d", g_ResetCoinFromInventoryOffset);
-	delete hGameData;
+	g_ResetMusicKitFromInventoryOffset = FindSendPropInfo("CCSPlayer", "m_unMusicID") + 2; // 'm_unMusicID' is 'un' (unsigned number), size is 2.
+	g_ResetCoinFromInventoryOffset = FindSendPropInfo("CCSPlayer", "m_rank") + 24; // 'm_rank' is array of 6 numbers, size is 24.
 }
 
 // Create ArrayList for the data.
