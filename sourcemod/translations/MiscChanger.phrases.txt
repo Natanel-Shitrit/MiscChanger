@@ -1,0 +1,119 @@
+"Phrases"
+{
+	"menu main title"
+	{
+		"en"		"Browse Change-Able 'Miscellaneous' items:"
+		"chi"		"浏览可变更的 '杂项' 物品:"
+	}
+
+	"menu change music kit"
+	{
+		"en"		"• Change Your Music-Kit"
+		"chi"		"• 变更你的音乐盒"
+	}
+
+	"menu change coin"
+	{
+		"en"		"• Change Your Coin"
+		"chi"		"• 变更你的硬币"
+	}
+
+	"menu change pin"
+	{
+		"en"		"• Change Your Pin"
+		"chi"		"• 变更你的胸章"
+	}
+
+	"menu music kit title"
+	{
+		"en"		"Choose Your Music-Kit:"
+		"chi"		"选择你的音乐盒:"
+	}
+
+	"menu item default music kit"
+	{
+		"en"		"Your Default Music-Kit"
+		"chi"		"你自己的音乐盒"
+	}
+
+	"chat no music kit found"
+	{
+		"en"		"No Music-Kits were found!"
+		"chi"		"无任何音乐盒被加载!"
+	}
+
+	"chat music kit menu unavailable"
+	{
+		"en"		"\x0EMusic-Kits\x01 Menu is \x02Currently Unavailable\x01!"
+		"chi"		"\x0E音乐盒\x01 菜单 \x02当前不可用\x01!"
+	}
+
+	"chat music kit change success"
+	{
+		"#format"	"{1:s}"
+		"en"		"\x04Successfully\x01 changed your Music-Kit to \x02{1}\x01!"
+		"chi"		"\x01 成功变更你的音乐盒为 \x02{1}\x01 !"
+	}
+
+	"menu coins title"
+	{
+		"en"		"Choose Your Coin:"
+		"chi"		"选择你的硬币:"
+	}
+
+	"menu item default coin"
+	{
+		"en"		"Your Default Coin"
+		"chi"		"你自己的硬币"
+	}
+
+	"chat no coin found"
+	{
+		"en"		"No Coins were found!"
+		"chi"		"无任何硬币被加载!"
+	}
+
+	"chat coin menu unavailable"
+	{
+		"en"		"\x0ECoins\x01 Menu is \x02Currently Unavailable\x01!"
+		"chi"		"\x0E硬币\x01 菜单 \x02当前不可用\x01!"
+	}
+
+	"chat coin change success"
+	{
+		"#format"	"{1:s}"
+		"en"		"\x04Successfully\x01 changed your Coin to \x02{1}\x01!"
+		"chi"		"\x01 成功变更你的硬币为 \x02{1}\x01 !"
+	}
+
+	"menu pins title"
+	{
+		"en"		"Choose Your Pin:"
+		"chi"		"选择你的胸章:"
+	}
+
+	"menu item default pin"
+	{
+		"en"		"Your Default Pin"
+		"chi"		"你自己的胸章"
+	}
+
+	"chat no pin found"
+	{
+		"en"		"No Pins were found!"
+		"chi"		"无任何胸章被加载!"
+	}
+
+	"chat pin menu unavailable"
+	{
+		"en"		"\x0EPins\x01 Menu is \x02Currently Unavailable\x01!"
+		"chi"		"\x0E胸章\x01 菜单 \x02当前不可用\x01!"
+	}
+
+	"chat pin change success"
+	{
+		"#format"	"{1:s}"
+		"en"		"\x04Successfully\x01 changed your Pin to \x02{1}\x01!"
+		"chi"		"\x01 成功变更你的胸章为 \x02{1}\x01 !"
+	}
+}
