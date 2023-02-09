@@ -41,10 +41,6 @@ ArrayList g_alCoinsSetsNames;
 ArrayList g_alCoins;
 ArrayList g_alPins;
 
-// Menus
-Menu g_mMainMenu;
-Menu g_mCoinsSetsMenu;
-
 // Settings
 bool g_bShowEconPreview;
 
@@ -182,9 +178,6 @@ public void OnPluginStart()
 	// Create ArrayList for the data.
 	CreateArrayLists();
 	
-	// Build Main-Menu.
-	g_mMainMenu = BuildMainMenu();
-	
 	// Late-Loading support.
 	if (eItems_AreItemsSynced())
 		eItems_OnItemsSynced();
@@ -194,6 +187,9 @@ public void OnPluginStart()
 	
 	// Connect to the database
 	Database.Connect(T_OnDBConnected, "MiscChanger");
+
+	// Multi lang support
+	LoadTranslations("MiscChanger.phrases");
 }
 
 public void OnPluginEnd()
@@ -253,7 +249,6 @@ public void eItems_OnItemsSynced()
 		
 		g_alCoinsSetsNames.PushString(sCurrentCoinSetName);
 	}
-	g_mCoinsSetsMenu = BuildCoinsSetsMenu();
 	
 	//====================================[ Coins ]=====================================//
 	for (int iCurrentCoin = 0; iCurrentCoin < eItems_GetCoinsCount(); iCurrentCoin++)
@@ -440,7 +435,10 @@ void T_OnClientSavedDataResponse(Database db, DBResultSet results, const char[] 
 public Action Command_MainMenu(int client, int argc)
 {
 	if (0 < client <= MaxClients && IsClientInGame(client))
-		g_mMainMenu.Display(client, MENU_TIME_FOREVER);
+	{
+		Menu mMainMenu = BuildMainMenu(client);
+		mMainMenu.Display(client, MENU_TIME_FOREVER);
+	}
 	
 	return Plugin_Handled;
 }
@@ -491,36 +489,49 @@ public Action Command_Coins(int client, int argc)
 		Menus
 *********************/
 /* Main-Menu */
-Menu BuildMainMenu()
+Menu BuildMainMenu(int client = 0)
 {
 	Menu mMainMenu = new Menu(MainMenuHandler);
-	mMainMenu.SetTitle("%s Browse Change-Able 'Miscellaneous' items:", PREFIX_NO_COLOR);
+	mMainMenu.SetTitle("%s %T", PREFIX_NO_COLOR, "menu main title", client);
 	
-	mMainMenu.AddItem("", "• Change Your Music-Kit");
-	mMainMenu.AddItem("", "• Change Your Coin");
-	mMainMenu.AddItem("", "• Change Your Pin");
+	char sBuffer[64];
+	Format(sBuffer, sizeof(sBuffer), "%T", "menu change music kit", client);
+	mMainMenu.AddItem("", sBuffer);
+
+	Format(sBuffer, sizeof(sBuffer), "%T", "menu change coin", client);
+	mMainMenu.AddItem("", sBuffer);
+
+	Format(sBuffer, sizeof(sBuffer), "%T", "menu change pin", client);
+	mMainMenu.AddItem("", sBuffer);
 	
 	return mMainMenu;
 }
 
 int MainMenuHandler(Menu menu, MenuAction action, int client, int param2)
 {
-	if (action == MenuAction_Select)
+	switch (action)
 	{
-		switch (param2)
+		case MenuAction_Select:
 		{
-			case 0:
+			switch (param2)
 			{
-				OpenMusicKitsMenu(client);
+				case 0:
+				{
+					OpenMusicKitsMenu(client);
+				}
+				case 1:
+				{
+					OpenCoinsMenu(client);
+				}
+				case 2:
+				{
+					OpenPinsMenu(client);
+				}
 			}
-			case 1:
-			{
-				OpenCoinsMenu(client);
-			}
-			case 2:
-			{
-				OpenPinsMenu(client);
-			}
+		}
+		case MenuAction_End:
+		{
+			delete menu;
 		}
 	}
 }
@@ -529,10 +540,12 @@ int MainMenuHandler(Menu menu, MenuAction action, int client, int param2)
 Menu BuildMusicKitsMenu(const char[] sFindMusicKit = "", int client)
 {
 	Menu mMusicKitsMenu = new Menu(MusicKitsMenuHandler);
-	mMusicKitsMenu.SetTitle("%s Choose Your Music-Kit:", PREFIX_NO_COLOR);
+	mMusicKitsMenu.SetTitle("%s %T", PREFIX_NO_COLOR, "menu music kit title", client);
 	
 	// Reset Music-Kit
-	mMusicKitsMenu.AddItem(sFindMusicKit, "Your Default Music-Kit", !g_PlayerInfo[client].iMusicKitNum ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	char sBuffer[32];
+	Format(sBuffer, sizeof(sBuffer), "%T", "menu item default music kit", client);
+	mMusicKitsMenu.AddItem(sFindMusicKit, sBuffer, !g_PlayerInfo[client].iMusicKitNum ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	
 	// Music-Kits Options
 	for (int iCurrentMusicKit = 0; iCurrentMusicKit < g_alMusicKitsNames.Length; iCurrentMusicKit++) // + 2 Because we added 2 kits from VALVE
@@ -561,7 +574,7 @@ void OpenMusicKitsMenu(int client, int startItem = 0, const char[] sFindMusicKit
 		{
 			case 1:
 			{
-				PrintToChat(client, "%s No Music-Kits were found!", PREFIX);
+				PrintToChat(client, "%s %T", PREFIX, "chat no music kit found", client);
 			}
 			case 2:
 			{
@@ -575,7 +588,9 @@ void OpenMusicKitsMenu(int client, int startItem = 0, const char[] sFindMusicKit
 		}
 	}
 	else
-		PrintToChat(client, "%s \x0EMusic-Kits\x01 Menu is \x02Currently Unavailable\x01!", PREFIX);
+	{
+		PrintToChat(client, "%s %T", PREFIX, "chat music kit menu unavailable", client);
+	}
 }
 
 int MusicKitsMenuHandler(Menu menu, MenuAction action, int client, int param2)
@@ -595,7 +610,7 @@ int MusicKitsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 					eItems_GetMusicKitDisplayNameByMusicKitNum(g_PlayerInfo[client].iMusicKitNum, sMusicKitDisplayName, MUSIC_KIT_MAX_NAME_LEN);
 				
 				// Alert him that the Music-Kit has been changed.
-				PrintToChat(client, "%s \x04Successfully\x01 changed your Music-Kit to \x02%s\x01!", PREFIX, sMusicKitDisplayName); 
+				PrintToChat(client, "%s %T", PREFIX, "chat music kit change success", client, sMusicKitDisplayName);
 			}
 			
 			// Reopen the menu where it was.
@@ -612,13 +627,15 @@ int MusicKitsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 
 /* Coins */
 
-Menu BuildCoinsSetsMenu()
+Menu BuildCoinsSetsMenu(int client = 0)
 {
 	Menu mCoinsSetsMenu = new Menu(CoinsSetsMenuHandler, MenuAction_DrawItem);
-	mCoinsSetsMenu.SetTitle("%s Choose Your Coin:", PREFIX_NO_COLOR);
+	mCoinsSetsMenu.SetTitle("%s %T", PREFIX_NO_COLOR, "menu coins title", client);
 	
 	// Reset Coin
-	mCoinsSetsMenu.AddItem("", "Your Default Coin");
+	char sBuffer[32];
+	Format(sBuffer, sizeof(sBuffer), "%T", "menu item default coin", client);
+	mCoinsSetsMenu.AddItem("", sBuffer);
 	
 	// Coin Options
 	for (int iCurrentCoinSet = 0; iCurrentCoinSet < g_alCoinsSetsNames.Length; iCurrentCoinSet++)
@@ -635,7 +652,7 @@ Menu BuildCoinsSetsMenu()
 Menu BuildCoinsMenu(int client, const char[] sFindCoin = "", int iCoinSet = -1, int iSelection = -1)
 {
 	Menu mCoinsMenu = new Menu(CoinsMenuHandler);
-	mCoinsMenu.SetTitle("%s Choose Your Coin:", PREFIX_NO_COLOR);
+	mCoinsMenu.SetTitle("%s %T", PREFIX_NO_COLOR, "menu coins title", client);
 	
 	// Saving the first item in menu page to know where to return to.
 	char sCoinSet[4];
@@ -645,7 +662,9 @@ Menu BuildCoinsMenu(int client, const char[] sFindCoin = "", int iCoinSet = -1, 
 	IntToString(iSelection, sSelection, sizeof(sSelection));
 	mCoinsMenu.AddItem(sCoinSet, iCoinSet == -1 ? sFindCoin : sSelection, ITEMDRAW_IGNORE);
 	
-	mCoinsMenu.AddItem("", "Your Default Coin", !g_PlayerInfo[client].iPinOrCoinDefIndex ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	char sBuffer[32];
+	Format(sBuffer, sizeof(sBuffer), "%T", "menu item default coin", client);
+	mCoinsMenu.AddItem("", sBuffer, !g_PlayerInfo[client].iPinOrCoinDefIndex ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	
 	// Coin Options
 	for (int iCurrentCoin = 0; iCurrentCoin < g_alCoins.Length; iCurrentCoin++)
@@ -669,14 +688,14 @@ void OpenCoinsMenu(int client, int startItem = 0, const char[] sFindCoin = "")
 	// Display the menu from the given item
 	if (eItems_AreItemsSynced())
 	{
-		Menu mMenuToDisplay = sFindCoin[0] ? BuildCoinsMenu(client, sFindCoin) : BuildCoinsSetsMenu();
+		Menu mMenuToDisplay = sFindCoin[0] ? BuildCoinsMenu(client, sFindCoin) : BuildCoinsSetsMenu(client);
 		
 		switch (mMenuToDisplay.ItemCount)
 		{
 			// Only the 'Reset' Button, no coins were found.
 			case 1:
 			{
-				PrintToChat(client, "%s No Coins were found!", PREFIX);
+				PrintToChat(client, "%s %T", PREFIX, "chat no coin found", client);
 			}
 			// Only 1 coin were found, don't bother opening the menu and automaticlly set it to the client coin.
 			case 2:
@@ -692,7 +711,7 @@ void OpenCoinsMenu(int client, int startItem = 0, const char[] sFindCoin = "")
 		}
 	}
 	else
-		PrintToChat(client, "%s \x0ECoins\x01 Menu is \x02Currently Unavailable\x01!", PREFIX);
+		PrintToChat(client, "%s %T", PREFIX, "chat coin menu unavailable", client);
 }
 
 int CoinsSetsMenuHandler(Menu menu, MenuAction action, int client, int param2)
@@ -738,7 +757,7 @@ int CoinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 					eItems_GetCoinDisplayNameByDefIndex(g_PlayerInfo[client].iPinOrCoinDefIndex, sCoinDisplayName, PIN_MAX_NAME_LEN);
 				
 				// Alert him that the coin has been changed.
-				PrintToChat(client, "%s \x04Successfully\x01 changed your Coin to \x02%s\x01!", PREFIX, sCoinDisplayName); 
+				PrintToChat(client, "%s %T", PREFIX, "chat coin change success", client, sCoinDisplayName); 
 			}
 				
 			BuildCoinsMenu(client, iCoinSet == -1 ? sSelectionOrStringSearch : "", iCoinSet, iCoinSet == -1 ? -1 : StringToInt(sSelectionOrStringSearch)).DisplayAt(client, menu.Selection, MENU_TIME_FOREVER);
@@ -751,7 +770,10 @@ int CoinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 		case MenuAction_Cancel:
 		{
 			if(iCoinSet != -1)
-				g_mCoinsSetsMenu.DisplayAt(client, StringToInt(sSelectionOrStringSearch), MENU_TIME_FOREVER);
+			{
+				Menu mCoinsSetsMenu = BuildCoinsSetsMenu(client);
+				mCoinsSetsMenu.DisplayAt(client, StringToInt(sSelectionOrStringSearch), MENU_TIME_FOREVER);
+			}
 		}
 	}
 }
@@ -760,10 +782,12 @@ int CoinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 Menu BuildPinsMenu(const char[] sFindPin = "", int client)
 {
 	Menu mPinsMenu = new Menu(PinsMenuHandler);
-	mPinsMenu.SetTitle("%s Choose Your Pin:", PREFIX_NO_COLOR);
+	mPinsMenu.SetTitle("%s %T", PREFIX_NO_COLOR, "menu pins title", client);
 	
 	// Reset Pin
-	mPinsMenu.AddItem(sFindPin, "Your Default Pin", !g_PlayerInfo[client].iPinOrCoinDefIndex ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+	char sBuffer[32];
+	Format(sBuffer, sizeof(sBuffer), "%T", "menu item default pin", client);
+	mPinsMenu.AddItem(sFindPin, sBuffer, !g_PlayerInfo[client].iPinOrCoinDefIndex ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	
 	// Pin Options
 	for (int iCurrentPin = 0; iCurrentPin < g_alPins.Length; iCurrentPin++)
@@ -793,7 +817,7 @@ void OpenPinsMenu(int client, int startItem = 0, const char[] sFindPin = "")
 		{
 			case 1:
 			{
-				PrintToChat(client, "%s No Pins were found!", PREFIX);
+				PrintToChat(client, "%s %T", PREFIX, "chat no pin found", client);
 			}
 			case 2:
 			{
@@ -807,7 +831,7 @@ void OpenPinsMenu(int client, int startItem = 0, const char[] sFindPin = "")
 		}
 	}
 	else
-		PrintToChat(client, "%s \x0EPins\x01 Menu is \x02Currently Unavailable\x01!", PREFIX);
+		PrintToChat(client, "%s %T", PREFIX, "chat pin menu unavailable", client);
 }
 
 int PinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
@@ -826,7 +850,7 @@ int PinsMenuHandler(Menu menu, MenuAction action, int client, int param2)
 				if(g_PlayerInfo[client].iPinOrCoinDefIndex != iPinDefIndex)
 					eItems_GetPinDisplayNameByDefIndex(g_PlayerInfo[client].iPinOrCoinDefIndex, sPinDisplayName, PIN_MAX_NAME_LEN);
 				
-				PrintToChat(client, "%s \x04Successfully\x01 changed your Pin to \x02%s\x01!", PREFIX, sPinDisplayName); // Alert him that the Pin has been changed.
+				PrintToChat(client, "%s %T", PREFIX, "chat pin change success", client, sPinDisplayName); // Alert him that the Pin has been changed.
 			}
 				
 			char sFindPin[64];
